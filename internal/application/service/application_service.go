@@ -142,9 +142,10 @@ func (s *Service) ListForUser(
 	ctx context.Context,
 	userID uuid.UUID,
 	status models.ApplicationStatus,
+	search string,
 	limit, offset int,
 ) ([]*models.Application, int64, error) {
-	apps, total, err := s.repo.ListForUser(ctx, userID, status, limit, offset)
+	apps, total, err := s.repo.ListForUser(ctx, userID, status, search, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list applications: %w", err)
 	}

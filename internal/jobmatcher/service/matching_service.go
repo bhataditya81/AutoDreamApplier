@@ -192,6 +192,24 @@ func (s *MatchingService) RejectMatch(ctx context.Context, matchID, userID uuid.
 	return s.matchRepo.UpdateStatus(ctx, matchID, userID, models.MatchStatusRejected)
 }
 
+// BulkApprove transitions multiple matches to approved in a single DB statement.
+func (s *MatchingService) BulkApprove(ctx context.Context, userID uuid.UUID, matchIDs []uuid.UUID) (int, error) {
+	n, err := s.matchRepo.BulkUpdateStatus(ctx, matchIDs, userID, models.MatchStatusApproved)
+	if err != nil {
+		return 0, fmt.Errorf("bulk approve: %w", err)
+	}
+	return n, nil
+}
+
+// BulkReject transitions multiple matches to rejected in a single DB statement.
+func (s *MatchingService) BulkReject(ctx context.Context, userID uuid.UUID, matchIDs []uuid.UUID) (int, error) {
+	n, err := s.matchRepo.BulkUpdateStatus(ctx, matchIDs, userID, models.MatchStatusRejected)
+	if err != nil {
+		return 0, fmt.Errorf("bulk reject: %w", err)
+	}
+	return n, nil
+}
+
 // SetFeedback records thumbs-up/thumbs-down on a match (for future ML training).
 func (s *MatchingService) SetFeedback(ctx context.Context, matchID, userID uuid.UUID, feedback string) error {
 	if feedback != "thumbs_up" && feedback != "thumbs_down" {

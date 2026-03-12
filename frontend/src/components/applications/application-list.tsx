@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { LayoutList } from "lucide-react";
+import { LayoutList, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
@@ -25,12 +25,30 @@ export function ApplicationList() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
+  // ── Search ────────────────────────────────────────────────────────────────
+  // Two-state pattern: `search` for controlled input, `debouncedSearch` for
+  // the actual API param — updated 300 ms after the user stops typing.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // Clear search whenever the status tab changes
+  useEffect(() => {
+    setSearch("");
+    setDebouncedSearch("");
+  }, [status]);
+
   const fetchApplications = useCallback(
     async (pageNum: number, replace: boolean) => {
       try {
         setError(null);
         const params: Record<string, string | number> = { page: pageNum, limit: 15 };
         if (status !== "all") params.status = status;
+        if (debouncedSearch) params.search = debouncedSearch;
         const res = await listApplications(params);
         setApplications((prev) => (replace ? res.data : [...prev, ...res.data]));
         setHasMore(res.hasMore);
@@ -39,7 +57,7 @@ export function ApplicationList() {
         setError(e instanceof Error ? e.message : "Failed to load applications");
       }
     },
-    [status]
+    [status, debouncedSearch]
   );
 
   useEffect(() => {
@@ -87,21 +105,46 @@ export function ApplicationList() {
 
   return (
     <div className="space-y-4">
-      {/* Status tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setStatus(tab.value)}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              status === tab.value
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Toolbar: tabs + search */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Status tabs */}
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setStatus(tab.value)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                status === tab.value
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search input */}
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by title or company…"
+            className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -119,12 +162,25 @@ export function ApplicationList() {
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <LayoutList className="h-8 w-8 text-gray-400" />
           </div>
-          <h3 className="text-base font-semibold text-gray-900 mb-1">
-            No applications yet
-          </h3>
-          <p className="text-sm text-gray-500 max-w-xs">
-            Approve job matches from the queue to start automating applications.
-          </p>
+          {debouncedSearch ? (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-1">
+                No results for &ldquo;{debouncedSearch}&rdquo;
+              </h3>
+              <p className="text-sm text-gray-500 max-w-xs">
+                Try a different job title or company name.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-1">
+                No applications yet
+              </h3>
+              <p className="text-sm text-gray-500 max-w-xs">
+                Approve job matches from the queue to start automating applications.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <>

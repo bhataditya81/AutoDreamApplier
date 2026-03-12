@@ -164,7 +164,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	apps, total, err := h.svc.ListForUser(r.Context(), userID, status, limit, offset)
+	search := q.Get("search")
+
+	apps, total, err := h.svc.ListForUser(r.Context(), userID, status, search, limit, offset)
 	if err != nil {
 		h.log.Error().Err(err).Msg("list applications failed")
 		jsonError(w, http.StatusInternalServerError, "failed to list applications")

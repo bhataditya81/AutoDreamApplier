@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	"github.com/bhata/AutoDreamApplier/internal/auth"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/models"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/repository"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/service"
@@ -35,7 +36,13 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/run/{userID}", h.RunForUser)
 	r.Post("/run-all", h.RunForAllUsers)
 
-	// Match queue management (scoped by userID path param)
+	// JWT-aware routes used by the frontend (userID extracted from bearer token)
+	r.Get("/", h.ListMatchesMe)
+	r.Patch("/{matchID}", h.UpdateMatchMe)
+	r.Patch("/{matchID}/feedback", h.FeedbackMe)
+	r.Post("/bulk-action", h.BulkAction)
+
+	// Legacy routes (scoped by userID path param — kept for internal/admin use)
 	r.Get("/user/{userID}", h.ListMatches)
 	r.Get("/{matchID}/user/{userID}", h.GetMatch)
 	r.Post("/{matchID}/approve", h.ApproveMatch)
@@ -217,6 +224,208 @@ func (h *Handler) SetFeedback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"feedback": req.Feedback})
+}
+
+// ── JWT-aware handlers (frontend) ─────────────────────────────────────────────
+
+// ListMatchesMe returns paginated matches for the authenticated user.
+// GET /api/v1/matches?status=pending&limit=20&offset=0
+func (h *Handler) ListMatchesMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.resolveUserID(w, r)
+	if !ok {
+		return
+	}
+
+	status := models.MatchStatus(r.URL.Query().Get("status"))
+	limit := queryInt(r, "limit", 20)
+	offset := queryInt(r, "offset", 0)
+
+	matches, total, err := h.matchRepo.ListForUser(r.Context(), userID, status, limit, offset)
+	if err != nil {
+		h.log.Error().Err(err).Str("user_id", userID.String()).Msg("list matches (me) failed")
+		response.InternalError(w, "failed to list matches")
+		return
+	}
+
+	totalPages := int(total) / limit
+	if int(total)%limit > 0 {
+		totalPages++
+	}
+
+	response.JSONWithMeta(w, http.StatusOK, matches, &response.Meta{
+		PerPage:    limit,
+		Total:      total,
+		TotalPages: totalPages,
+	})
+}
+
+// UpdateMatchMe approves or rejects a single match for the authenticated user.
+// PATCH /api/v1/matches/{matchID}  body: {"status":"approved"|"rejected"}
+func (h *Handler) UpdateMatchMe(w http.ResponseWriter, r *http.Request) {
+	matchID, err := parseUUID(chi.URLParam(r, "matchID"))
+	if err != nil {
+		response.BadRequest(w, "invalid match ID")
+		return
+	}
+
+	userID, ok := h.resolveUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "invalid request body")
+		return
+	}
+
+	var svcErr error
+	switch req.Status {
+	case "approved":
+		svcErr = h.svc.ApproveMatch(r.Context(), matchID, userID)
+	case "rejected":
+		svcErr = h.svc.RejectMatch(r.Context(), matchID, userID)
+	default:
+		response.BadRequest(w, "status must be 'approved' or 'rejected'")
+		return
+	}
+
+	if svcErr != nil {
+		if errors.Is(svcErr, repository.ErrNotFound) {
+			response.NotFound(w, "match not found")
+			return
+		}
+		h.log.Error().Err(svcErr).Msg("update match (me) failed")
+		response.InternalError(w, "failed to update match")
+		return
+	}
+
+	// Return a lightweight updated object the frontend can merge into local state
+	response.JSON(w, http.StatusOK, map[string]string{
+		"id":     matchID.String(),
+		"status": req.Status,
+	})
+}
+
+// BulkAction approves or rejects multiple matches for the authenticated user.
+// POST /api/v1/matches/bulk-action  body: {"action":"approve"|"reject","match_ids":["..."]}
+func (h *Handler) BulkAction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.resolveUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Action   string   `json:"action"`
+		MatchIDs []string `json:"match_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "invalid request body")
+		return
+	}
+	if len(req.MatchIDs) == 0 {
+		response.BadRequest(w, "match_ids must not be empty")
+		return
+	}
+	if len(req.MatchIDs) > 100 {
+		response.BadRequest(w, "bulk action limited to 100 matches at a time")
+		return
+	}
+
+	matchIDs := make([]uuid.UUID, 0, len(req.MatchIDs))
+	for _, raw := range req.MatchIDs {
+		id, err := parseUUID(raw)
+		if err != nil {
+			response.BadRequest(w, "invalid match_id: "+raw)
+			return
+		}
+		matchIDs = append(matchIDs, id)
+	}
+
+	var (
+		updated int
+		svcErr  error
+	)
+	switch req.Action {
+	case "approve":
+		updated, svcErr = h.svc.BulkApprove(r.Context(), userID, matchIDs)
+	case "reject":
+		updated, svcErr = h.svc.BulkReject(r.Context(), userID, matchIDs)
+	default:
+		response.BadRequest(w, "action must be 'approve' or 'reject'")
+		return
+	}
+
+	if svcErr != nil {
+		h.log.Error().Err(svcErr).Str("action", req.Action).Msg("bulk action failed")
+		response.InternalError(w, "bulk action failed")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"action":  req.Action,
+		"updated": updated,
+	})
+}
+
+// FeedbackMe records thumbs_up or thumbs_down quality feedback on a match for
+// the authenticated user (separate from approve/reject status).
+// PATCH /api/v1/matches/{matchID}/feedback  body: {"feedback":"thumbs_up"|"thumbs_down"}
+func (h *Handler) FeedbackMe(w http.ResponseWriter, r *http.Request) {
+	matchID, err := parseUUID(chi.URLParam(r, "matchID"))
+	if err != nil {
+		response.BadRequest(w, "invalid match ID")
+		return
+	}
+
+	userID, ok := h.resolveUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Feedback string `json:"feedback"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := h.svc.SetFeedback(r.Context(), matchID, userID, req.Feedback); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			response.NotFound(w, "match not found")
+			return
+		}
+		response.BadRequest(w, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"feedback": req.Feedback})
+}
+
+// resolveUserID extracts the authenticated user's internal UUID from the JWT
+// claims stored in request context.
+func (h *Handler) resolveUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	claims, ok := auth.GetUserFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "not authenticated")
+		return uuid.Nil, false
+	}
+
+	userID, err := h.matchRepo.GetUserIDBySub(r.Context(), claims.Sub)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			response.NotFound(w, "user not found")
+			return uuid.Nil, false
+		}
+		h.log.Error().Err(err).Str("sub", claims.Sub).Msg("resolve user ID failed")
+		response.InternalError(w, "failed to resolve user")
+		return uuid.Nil, false
+	}
+
+	return userID, true
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

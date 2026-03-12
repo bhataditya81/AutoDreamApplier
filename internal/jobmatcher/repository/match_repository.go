@@ -57,6 +57,19 @@ type MatchWithJob struct {
 	JobATSType     discmodels.ATSType  `json:"job_ats_type"`
 }
 
+// GetUserIDBySub resolves a user's internal UUID from their cognito_sub.
+// Used by JWT-aware handlers that receive a sub claim rather than a UUID.
+func (r *MatchRepository) GetUserIDBySub(ctx context.Context, sub string) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.pool.QueryRow(ctx,
+		`SELECT id FROM users WHERE cognito_sub = $1 AND is_active = true`, sub,
+	).Scan(&id)
+	if err != nil {
+		return uuid.Nil, ErrNotFound
+	}
+	return id, nil
+}
+
 // BulkInsert inserts multiple matches, skipping duplicates (same user+job).
 // Returns the number of newly inserted rows.
 func (r *MatchRepository) BulkInsert(ctx context.Context, matches []MatchInsert) (int, error) {
@@ -210,6 +223,29 @@ func (r *MatchRepository) GetByID(ctx context.Context, matchID, userID uuid.UUID
 		_ = json.Unmarshal(breakdownJSON, &mwj.MatchBreakdown)
 	}
 	return &mwj, nil
+}
+
+// BulkUpdateStatus transitions multiple matches to a new status in one statement,
+// scoped to the given user. Returns the count of rows actually updated.
+func (r *MatchRepository) BulkUpdateStatus(
+	ctx context.Context,
+	matchIDs []uuid.UUID,
+	userID uuid.UUID,
+	status models.MatchStatus,
+) (int, error) {
+	if len(matchIDs) == 0 {
+		return 0, nil
+	}
+	// pgx accepts []uuid.UUID directly for ANY($1)
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE matches SET status = $1, updated_at = NOW()
+		WHERE id = ANY($2) AND user_id = $3`,
+		string(status), matchIDs, userID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("bulk update match status: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // UpdateStatus transitions a match to a new status, scoped to the user.

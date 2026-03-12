@@ -63,6 +63,11 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
 
 // ── Matches ───────────────────────────────────────────────────────────────────
 
+export interface MatchStatusUpdateResponse {
+  id: string;
+  status: MatchStatus;
+}
+
 export async function listMatches(
   params?: Record<string, string | number>
 ): Promise<PaginatedResponse<Match>> {
@@ -80,10 +85,30 @@ export async function updateMatchStatus(
   matchId: string,
   status: "approved" | "rejected",
   feedback?: "thumbs_up" | "thumbs_down"
-): Promise<Match> {
-  return apiFetch<Match>(`/matches/${matchId}`, {
+): Promise<MatchStatusUpdateResponse> {
+  return apiFetch<MatchStatusUpdateResponse>(`/matches/${matchId}`, {
     method: "PATCH",
     body: JSON.stringify({ status, userFeedback: feedback }),
+  });
+}
+
+export async function bulkUpdateMatches(
+  matchIds: string[],
+  action: "approve" | "reject"
+): Promise<void> {
+  await apiFetch<{ action: string; updated: number }>("/matches/bulk-action", {
+    method: "POST",
+    body: JSON.stringify({ action, match_ids: matchIds }),
+  });
+}
+
+export async function setMatchFeedback(
+  matchId: string,
+  feedback: "thumbs_up" | "thumbs_down"
+): Promise<void> {
+  await apiFetch<{ feedback: string }>(`/matches/${matchId}/feedback`, {
+    method: "PATCH",
+    body: JSON.stringify({ feedback }),
   });
 }
 

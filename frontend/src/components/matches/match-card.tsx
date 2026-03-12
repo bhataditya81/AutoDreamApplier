@@ -14,17 +14,42 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { updateMatchStatus } from "@/lib/api";
+import { setMatchFeedback, updateMatchStatus, type MatchStatusUpdateResponse } from "@/lib/api";
 import { formatSalary, scoreColor, scorePercent, timeAgo } from "@/lib/utils";
 import type { Match } from "@/lib/types";
 
 interface MatchCardProps {
   match: Match;
-  onUpdate: (updated: Match) => void;
+  onUpdate: (updated: MatchStatusUpdateResponse) => void;
+  /** Whether this card is currently selected for bulk action */
+  selected?: boolean;
+  /** Called when the user toggles the selection checkbox */
+  onToggleSelect?: (id: string) => void;
 }
 
-export function MatchCard({ match, onUpdate }: MatchCardProps) {
+export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCardProps) {
   const [loading, setLoading] = useState<"approve" | "reject" | null>(null);
+
+  // ── Match quality feedback (thumbs up/down — separate from approve/reject) ──
+  const [feedback, setFeedback] = useState<"thumbs_up" | "thumbs_down" | undefined>(
+    match.userFeedback
+  );
+  const [feedbackLoading, setFeedbackLoading] = useState<"thumbs_up" | "thumbs_down" | null>(null);
+
+  async function handleFeedback(value: "thumbs_up" | "thumbs_down") {
+    if (feedbackLoading) return;
+    setFeedbackLoading(value);
+    const prev = feedback;
+    setFeedback(value); // optimistic
+    try {
+      await setMatchFeedback(match.id, value);
+    } catch (e) {
+      console.error("Failed to set match feedback", e);
+      setFeedback(prev); // rollback
+    } finally {
+      setFeedbackLoading(null);
+    }
+  }
 
   async function handleApprove() {
     setLoading("approve");
@@ -55,8 +80,41 @@ export function MatchCard({ match, onUpdate }: MatchCardProps) {
   const scoreClass = scoreColor(match.matchScore);
 
   return (
-    <Card className="hover:shadow-card-hover transition-shadow">
-      <CardContent className="pt-5">
+    <Card
+      className={`hover:shadow-card-hover transition-shadow relative ${
+        selected ? "ring-2 ring-brand-500" : ""
+      }`}
+    >
+      {/* Selection checkbox — only rendered when bulk-select mode is active */}
+      {onToggleSelect && (
+        <button
+          type="button"
+          aria-label={selected ? "Deselect" : "Select"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(match.id);
+          }}
+          className={`absolute top-3 left-3 z-10 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
+            selected
+              ? "bg-brand-500 border-brand-500 text-white"
+              : "border-gray-300 bg-white hover:border-brand-400"
+          }`}
+        >
+          {selected && (
+            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 6l3 3 5-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+      )}
+
+      <CardContent className={`pt-5 ${onToggleSelect ? "pl-10" : ""}`}>
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">
@@ -108,6 +166,41 @@ export function MatchCard({ match, onUpdate }: MatchCardProps) {
               </span>
             </div>
           ))}
+        </div>
+
+        {/* Feedback row — rate match quality (for ML training) */}
+        <div className="flex items-center gap-2 mb-3 pt-2 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Rate this match:</span>
+          <button
+            type="button"
+            aria-label="Good match"
+            onClick={() => handleFeedback("thumbs_up")}
+            disabled={!!feedbackLoading}
+            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+              feedback === "thumbs_up"
+                ? "text-green-600 bg-green-50"
+                : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+            }`}
+          >
+            <ThumbsUp
+              className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_up" ? "animate-pulse" : ""}`}
+            />
+          </button>
+          <button
+            type="button"
+            aria-label="Poor match"
+            onClick={() => handleFeedback("thumbs_down")}
+            disabled={!!feedbackLoading}
+            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+              feedback === "thumbs_down"
+                ? "text-red-500 bg-red-50"
+                : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+            }`}
+          >
+            <ThumbsDown
+              className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_down" ? "animate-pulse" : ""}`}
+            />
+          </button>
         </div>
 
         {/* Badges */}

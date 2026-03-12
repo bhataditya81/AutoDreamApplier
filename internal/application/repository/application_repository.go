@@ -97,8 +97,9 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, appID, userID uuid.
 	return &app, nil
 }
 
-// ListForUser returns applications for a user, newest first, with optional status filter.
-func (r *ApplicationRepository) ListForUser(ctx context.Context, userID uuid.UUID, status models.ApplicationStatus, limit, offset int) ([]*models.Application, int64, error) {
+// ListForUser returns applications for a user, newest first, with optional status and
+// search filters. search matches against job title or company (case-insensitive).
+func (r *ApplicationRepository) ListForUser(ctx context.Context, userID uuid.UUID, status models.ApplicationStatus, search string, limit, offset int) ([]*models.Application, int64, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -107,26 +108,35 @@ func (r *ApplicationRepository) ListForUser(ctx context.Context, userID uuid.UUI
 	}
 
 	args := []any{userID}
-	where := "user_id = $1"
+	where := "a.user_id = $1"
 	if status != "" {
 		args = append(args, string(status))
-		where += fmt.Sprintf(" AND status = $%d", len(args))
+		where += fmt.Sprintf(" AND a.status = $%d", len(args))
+	}
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		where += fmt.Sprintf(" AND (LOWER(j.title) LIKE LOWER($%d) OR LOWER(j.company) LIKE LOWER($%d))", len(args), len(args))
 	}
 
 	var total int64
-	if err := r.pool.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM applications WHERE %s`, where), args...).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM applications a
+		JOIN jobs j ON j.id = a.job_id
+		WHERE %s`, where), args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count applications: %w", err)
 	}
 
 	args = append(args, limit, offset)
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT
-			id, user_id, job_id, match_id, resume_id, status, outcome,
-			tailored_resume_s3, cover_letter_s3, screenshot_s3,
-			form_answers_json, error_message, applied_at, outcome_updated_at, created_at
-		FROM applications
+			a.id, a.user_id, a.job_id, a.match_id, a.resume_id, a.status, a.outcome,
+			a.tailored_resume_s3, a.cover_letter_s3, a.screenshot_s3,
+			a.form_answers_json, a.error_message, a.applied_at, a.outcome_updated_at, a.created_at
+		FROM applications a
+		JOIN jobs j ON j.id = a.job_id
 		WHERE %s
-		ORDER BY created_at DESC
+		ORDER BY a.created_at DESC
 		LIMIT $%d OFFSET $%d`,
 		where, len(args)-1, len(args)),
 		args...,
@@ -454,4 +464,93 @@ func (r *ApplicationRepository) GetPreferences(ctx context.Context, userID uuid.
 		return nil, fmt.Errorf("getting preferences: %w", err)
 	}
 	return &prefs, nil
+}
+
+// ── Weekly digest helpers ─────────────────────────────────────────────────────
+
+// ActiveUserDigest is a lightweight projection of a user row used by the
+// weekly digest scheduler. It avoids partial-scan issues from the full User
+// model while keeping the query minimal.
+type ActiveUserDigest struct {
+	ID       uuid.UUID
+	Email    string
+	FullName string
+}
+
+// WeeklyStats holds aggregate application activity for a given time window.
+type WeeklyStats struct {
+	Applied     int
+	Interviews  int
+	Offers      int
+	Rejections  int
+	Pending     int // current pending matches (not time-scoped)
+}
+
+// GetAllActiveUsersForDigest returns every active user's ID, email, and name.
+// Called once per weekly digest run to iterate recipients.
+func (r *ApplicationRepository) GetAllActiveUsersForDigest(ctx context.Context) ([]*ActiveUserDigest, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, email, full_name
+		 FROM users
+		 WHERE is_active = true
+		 ORDER BY created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllActiveUsersForDigest query: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*ActiveUserDigest
+	for rows.Next() {
+		u := &ActiveUserDigest{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.FullName); err != nil {
+			return nil, fmt.Errorf("GetAllActiveUsersForDigest scan: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllActiveUsersForDigest rows: %w", err)
+	}
+	return users, nil
+}
+
+// GetWeeklyStats returns application and match counts for a user since the
+// given time. A single CTE query covers all five metrics in one roundtrip:
+//   - Applied:    applications with status='applied' created after `since`
+//   - Interviews: applications with outcome='interview' updated after `since`
+//   - Offers:     applications with outcome='offer' updated after `since`
+//   - Rejections: applications with outcome='rejected' updated after `since`
+//   - Pending:    current pending matches (point-in-time, not time-scoped)
+func (r *ApplicationRepository) GetWeeklyStats(ctx context.Context, userID uuid.UUID, since time.Time) (*WeeklyStats, error) {
+	var s WeeklyStats
+	err := r.pool.QueryRow(ctx, `
+		WITH weekly_apps AS (
+			SELECT COUNT(*) FILTER (WHERE status = 'applied') AS applied
+			FROM   applications
+			WHERE  user_id = $1
+			  AND  created_at >= $2
+		),
+		weekly_outcomes AS (
+			SELECT
+				COUNT(*) FILTER (WHERE outcome = 'interview') AS interviews,
+				COUNT(*) FILTER (WHERE outcome = 'offer')     AS offers,
+				COUNT(*) FILTER (WHERE outcome = 'rejected')  AS rejections
+			FROM   applications
+			WHERE  user_id = $1
+			  AND  outcome_updated_at >= $2
+		),
+		pending AS (
+			SELECT COUNT(*) AS pending
+			FROM   matches
+			WHERE  user_id = $1
+			  AND  status = 'pending'
+		)
+		SELECT wa.applied, wo.interviews, wo.offers, wo.rejections, p.pending
+		FROM   weekly_apps wa, weekly_outcomes wo, pending p`,
+		userID, since,
+	).Scan(&s.Applied, &s.Interviews, &s.Offers, &s.Rejections, &s.Pending)
+	if err != nil {
+		return nil, fmt.Errorf("GetWeeklyStats: %w", err)
+	}
+	return &s, nil
 }

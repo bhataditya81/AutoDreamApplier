@@ -149,6 +149,11 @@ func main() {
 	// ── Auto-apply scheduler ──────────────────────────────────────────────────
 	sched := scheduler.New(repo, mRepo, svc, log)
 
+	// ── Weekly digest scheduler ───────────────────────────────────────────────
+	// Sends a summary email to every active user on Mondays at 09:00 UTC.
+	// The notifier is nil-safe; in local dev (SES not configured) this is a no-op.
+	digestSched := scheduler.NewDigestScheduler(repo, notifier, log)
+
 	// ── HTTP router ───────────────────────────────────────────────────────────
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -224,6 +229,9 @@ func main() {
 
 	// Auto-apply scheduler: runs until ctx is cancelled (clean shutdown below).
 	go sched.Run(ctx)
+
+	// Weekly digest scheduler: same lifecycle as the auto-apply scheduler.
+	go digestSched.Run(ctx)
 
 	// ── Graceful shutdown ─────────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
