@@ -1,0 +1,11 @@
+include:
+  - local: .gitlab/ci/base.yml
+  - local: .gitlab/ci/rules.yml
+  - local: .gitlab/ci/go.yml
+  - local: .gitlab/ci/python.yml
+  - local: .gitlab/ci/node.yml
+  - local: .gitlab/ci/docker.yml
+  - local: .gitlab/ci/aws-auth.yml
+  - local: .gitlab/ci/deploy-ecs.yml
+  - local: .gitlab/ci/deploy-lambda.yml
+

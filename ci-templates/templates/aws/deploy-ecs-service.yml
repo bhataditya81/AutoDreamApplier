@@ -1,0 +1,42 @@
+.deploy-ecs-service:
+  image: amazon/aws-cli:2
+  before_script:
+    - aws --version
+    - |
+      if [ -z "${AWS_REGION:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "Missing AWS credentials (AWS_REGION/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)" >&2
+        exit 1
+      fi
+      if [ -z "${ECS_CLUSTER:-}" ] || [ -z "${ECS_SERVICE:-}" ] || [ -z "${ECS_TASKDEF_FAMILY:-}" ] || [ -z "${ECS_CONTAINER_NAME:-}" ] || [ -z "${IMAGE_URI:-}" ]; then
+        echo "Missing ECS vars (ECS_CLUSTER/ECS_SERVICE/ECS_TASKDEF_FAMILY/ECS_CONTAINER_NAME/IMAGE_URI)" >&2
+        exit 1
+      fi
+      if ! command -v jq >/dev/null 2>&1; then
+        if command -v yum >/dev/null 2>&1; then
+          yum install -y jq
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y jq
+        else
+          echo "jq is required but no supported package manager found" >&2
+          exit 1
+        fi
+      fi
+  script:
+    - |
+      set -euo pipefail
+
+      CURRENT_JSON="$(aws ecs describe-task-definition --task-definition "${ECS_TASKDEF_FAMILY}")"
+      NEW_TASKDEF="$(echo "${CURRENT_JSON}" | jq -r '.taskDefinition
+        | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
+        | (.containerDefinitions[] | select(.name==env.ECS_CONTAINER_NAME) | .image) = env.IMAGE_URI')"
+
+      NEW_ARN="$(aws ecs register-task-definition --cli-input-json "${NEW_TASKDEF}" | jq -r '.taskDefinition.taskDefinitionArn')"
+
+      aws ecs update-service \
+        --cluster "${ECS_CLUSTER}" \
+        --service "${ECS_SERVICE}" \
+        --task-definition "${NEW_ARN}" \
+        --force-new-deployment >/dev/null
+
+      aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+

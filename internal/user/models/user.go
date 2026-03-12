@@ -1,0 +1,101 @@
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// User represents a user in the system.
+type User struct {
+	ID             uuid.UUID  `json:"id" db:"id"`
+	CognitoSub     string     `json:"cognito_sub" db:"cognito_sub"`
+	Email          string     `json:"email" db:"email"`
+	FullName       string     `json:"full_name" db:"full_name"`
+	Tier           string     `json:"tier" db:"tier"`
+	ApplyMode      string     `json:"apply_mode" db:"apply_mode"`
+	AutoThreshold  float64    `json:"auto_threshold" db:"auto_threshold"`
+	DailyLimit     int        `json:"daily_limit" db:"daily_limit"`
+	IsActive       bool       `json:"is_active" db:"is_active"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// UserPreferences represents user's job search preferences.
+type UserPreferences struct {
+	ID              uuid.UUID  `json:"id" db:"id"`
+	UserID          uuid.UUID  `json:"user_id" db:"user_id"`
+	TargetTitles    []string   `json:"target_titles" db:"target_titles"`
+	Locations       []string   `json:"locations" db:"locations"`
+	RemotePref      string     `json:"remote_pref" db:"remote_pref"`
+	SalaryMin       *int       `json:"salary_min" db:"salary_min"`
+	SalaryMax       *int       `json:"salary_max" db:"salary_max"`
+	SalaryCurrency  string     `json:"salary_currency" db:"salary_currency"`
+	Exclusions      []string   `json:"exclusions" db:"exclusions"`
+	AiTailorEnabled bool       `json:"ai_tailor_enabled" db:"ai_tailor_enabled"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// Resume represents an uploaded resume.
+type Resume struct {
+	ID              uuid.UUID  `json:"id" db:"id"`
+	UserID          uuid.UUID  `json:"user_id" db:"user_id"`
+	FileName        string     `json:"file_name" db:"file_name"`
+	S3Key           string     `json:"s3_key" db:"s3_key"`
+	ParsedJSON      []byte     `json:"parsed_json,omitempty" db:"parsed_json"`
+	RawText         string     `json:"raw_text,omitempty" db:"raw_text"`
+	IsPrimary       bool       `json:"is_primary" db:"is_primary"`
+	InterviewCount  int        `json:"interview_count" db:"interview_count"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+}
+
+// CreateUserRequest is the payload for creating/syncing a user from Cognito.
+type CreateUserRequest struct {
+	CognitoSub string `json:"cognito_sub" validate:"required"`
+	Email      string `json:"email" validate:"required,email"`
+	FullName   string `json:"full_name"`
+}
+
+// UpdateUserRequest is the payload for updating a user's profile.
+type UpdateUserRequest struct {
+	FullName      *string  `json:"full_name,omitempty"`
+	ApplyMode     *string  `json:"apply_mode,omitempty" validate:"omitempty,oneof=review auto"`
+	AutoThreshold *float64 `json:"auto_threshold,omitempty" validate:"omitempty,min=0,max=1"`
+}
+
+// UpdatePreferencesRequest is the payload for updating job preferences.
+type UpdatePreferencesRequest struct {
+	TargetTitles   []string `json:"target_titles" validate:"required,min=1"`
+	Locations      []string `json:"locations"`
+	RemotePref     string   `json:"remote_pref" validate:"required,oneof=remote hybrid onsite any"`
+	SalaryMin      *int     `json:"salary_min" validate:"omitempty,min=0"`
+	SalaryMax      *int     `json:"salary_max" validate:"omitempty,min=0"`
+	SalaryCurrency string   `json:"salary_currency" validate:"omitempty,len=3"`
+	Exclusions     []string `json:"exclusions"`
+	AiTailorEnabled *bool   `json:"ai_tailor_enabled,omitempty"`
+}
+
+// UploadResumeResponse is returned after resume upload.
+type UploadResumeResponse struct {
+	ID        uuid.UUID `json:"id"`
+	FileName  string    `json:"file_name"`
+	IsPrimary bool      `json:"is_primary"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UserDashboard combines user data for the dashboard view.
+type UserDashboard struct {
+	User        *User            `json:"user"`
+	Preferences *UserPreferences `json:"preferences"`
+	Resumes     []Resume         `json:"resumes"`
+	Stats       *UserStats       `json:"stats"`
+}
+
+// UserStats holds summary statistics for a user.
+type UserStats struct {
+	TotalApplications  int `json:"total_applications"`
+	AppliedToday       int `json:"applied_today"`
+	PendingMatches     int `json:"pending_matches"`
+	InterviewsReceived int `json:"interviews_received"`
+}

@@ -1,0 +1,20 @@
+# Grafana datasource provisioning for AutoDreamApplier local development.
+# Auto-configures the Prometheus datasource so no manual setup is required
+# after `docker compose up`.
+#
+# In production this lives in an ECS task definition environment or a
+# Kubernetes ConfigMap mounted at /etc/grafana/provisioning/datasources/.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus           # stable UID referenced by dashboard JSON
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: "15s"    # match prometheus global scrape_interval
+      httpMethod: GET
+    editable: false

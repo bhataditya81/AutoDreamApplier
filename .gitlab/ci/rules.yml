@@ -1,0 +1,32 @@
+.rules:
+  # Standard CI: run on merge requests, branches, and tags
+  ci:
+    rules:
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        when: on_success
+      - if: $CI_COMMIT_BRANCH
+        when: on_success
+      - if: $CI_COMMIT_TAG
+        when: on_success
+
+  # Merge requests: validate/test/build but never deploy
+  mr:
+    rules:
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        when: on_success
+      - when: never
+
+  # Default branch: full pipeline (including deploy jobs, which can be manual)
+  default_branch:
+    rules:
+      - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+        when: on_success
+      - when: never
+
+  # Tags: build/package; deploy is typically manual (release flow)
+  tag:
+    rules:
+      - if: $CI_COMMIT_TAG
+        when: on_success
+      - when: never
+

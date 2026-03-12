@@ -1,0 +1,48 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck       # Check for unchecked errors
+    - gosimple       # Simplification suggestions
+    - govet          # Reports suspicious constructs
+    - ineffassign    # Detects ineffectual assignments
+    - staticcheck    # Go static analysis
+    - unused         # Check for unused code
+    - gofmt          # Checks whether code is gofmt-formatted
+    - goimports      # Goimports does everything gofmt does and fixes imports
+    - misspell       # Finds commonly misspelled English words
+    - revive         # Replacement for golint
+    - bodyclose      # Checks whether HTTP response body is closed
+    - contextcheck   # Checks whether functions use a non-inherited context
+    - dupl           # Tool for code clone detection
+    - gocritic       # Provides diagnostics
+    - noctx          # Finds sending http request without context.Context
+    - prealloc       # Finds slice declarations that could be preallocated
+    - sqlclosecheck  # Checks that sql.Rows and sql.Stmt are closed
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+  dupl:
+    threshold: 150
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - dupl
+        - errcheck
+    # Exclude generated code
+    - path: ".*\\.pb\\.go"
+      linters:
+        - all
+  max-same-issues: 3

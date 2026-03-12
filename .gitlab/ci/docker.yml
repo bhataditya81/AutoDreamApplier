@@ -1,0 +1,125 @@
+.docker-build:
+  stage: package
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - apk add --no-cache aws-cli
+    - docker info
+  script:
+    - |
+      set -euo pipefail
+
+      IMAGE_GITLAB="${CI_REGISTRY_IMAGE}/${IMAGE_NAME}"
+      TAG_SHA="${CI_COMMIT_SHA}"
+
+      SHOULD_PUSH="false"
+      if [ "${CI_COMMIT_BRANCH:-}" = "${CI_DEFAULT_BRANCH:-}" ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
+        SHOULD_PUSH="true"
+      fi
+
+      echo "Building ${IMAGE_NAME} from ${DOCKERFILE} (context: ${CONTEXT})"
+
+      if [ "${SHOULD_PUSH}" = "true" ]; then
+        echo "${CI_REGISTRY_PASSWORD}" | docker login -u "${CI_REGISTRY_USER}" --password-stdin "${CI_REGISTRY}"
+      fi
+
+      docker build -f "${DOCKERFILE}" -t "${IMAGE_GITLAB}:${TAG_SHA}" "${CONTEXT}"
+
+      if [ "${SHOULD_PUSH}" = "true" ]; then
+        docker push "${IMAGE_GITLAB}:${TAG_SHA}"
+
+        if [ "${CI_COMMIT_BRANCH:-}" = "${CI_DEFAULT_BRANCH:-}" ]; then
+          docker tag "${IMAGE_GITLAB}:${TAG_SHA}" "${IMAGE_GITLAB}:latest"
+          docker push "${IMAGE_GITLAB}:latest"
+        fi
+
+        # Optional: also mirror to ECR (dev on default branch; prod on tags)
+        if [ -n "${AWS_REGION:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+          ECR_PREFIX="${ECR_REPO_PREFIX:-autodreamapplier}"
+
+          if [ "${CI_COMMIT_BRANCH:-}" = "${CI_DEFAULT_BRANCH:-}" ] && [ -n "${AWS_ACCOUNT_ID_DEV:-}" ]; then
+            ECR_REGISTRY_DEV="${AWS_ACCOUNT_ID_DEV}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY_DEV}"
+            ECR_IMAGE_DEV="${ECR_REGISTRY_DEV}/${ECR_PREFIX}/${IMAGE_NAME}"
+            aws ecr describe-repositories --repository-names "${ECR_PREFIX}/${IMAGE_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || \
+              aws ecr create-repository --repository-name "${ECR_PREFIX}/${IMAGE_NAME}" --region "${AWS_REGION}" >/dev/null
+            docker tag "${IMAGE_GITLAB}:${TAG_SHA}" "${ECR_IMAGE_DEV}:${TAG_SHA}"
+            docker tag "${IMAGE_GITLAB}:${TAG_SHA}" "${ECR_IMAGE_DEV}:latest"
+            docker push "${ECR_IMAGE_DEV}:${TAG_SHA}"
+            docker push "${ECR_IMAGE_DEV}:latest"
+          fi
+
+          if [ -n "${CI_COMMIT_TAG:-}" ] && [ -n "${AWS_ACCOUNT_ID_PROD:-}" ]; then
+            ECR_REGISTRY_PROD="${AWS_ACCOUNT_ID_PROD}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY_PROD}"
+            ECR_IMAGE_PROD="${ECR_REGISTRY_PROD}/${ECR_PREFIX}/${IMAGE_NAME}"
+            aws ecr describe-repositories --repository-names "${ECR_PREFIX}/${IMAGE_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || \
+              aws ecr create-repository --repository-name "${ECR_PREFIX}/${IMAGE_NAME}" --region "${AWS_REGION}" >/dev/null
+            docker tag "${IMAGE_GITLAB}:${TAG_SHA}" "${ECR_IMAGE_PROD}:${CI_COMMIT_TAG}"
+            docker push "${ECR_IMAGE_PROD}:${CI_COMMIT_TAG}"
+          fi
+        fi
+      fi
+
+  rules: !reference [.rules, mr, rules]
+
+# Override rules for default branch/tag to allow pushing
+.docker-build:publish:
+  extends: .docker-build
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+docker:api-gateway:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: api-gateway
+    DOCKERFILE: deploy/docker/api-gateway.Dockerfile
+    CONTEXT: .
+  needs: ["go:test", "py:lint", "web:lint"]
+
+docker:job-discovery:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: job-discovery
+    DOCKERFILE: deploy/docker/job-discovery.Dockerfile
+    CONTEXT: .
+  needs: ["go:test"]
+
+docker:job-matcher:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: job-matcher
+    DOCKERFILE: deploy/docker/job-matcher.Dockerfile
+    CONTEXT: .
+  needs: ["go:test"]
+
+docker:apply-engine:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: apply-engine
+    DOCKERFILE: deploy/docker/apply-engine.Dockerfile
+    CONTEXT: .
+  needs: ["go:test", "py:lint"]
+
+docker:browser-pool:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: browser-pool
+    DOCKERFILE: deploy/docker/browser-node.Dockerfile
+    CONTEXT: .
+  needs: ["go:test"]
+
+docker:ai-service:
+  extends: .docker-build:publish
+  variables:
+    IMAGE_NAME: ai-service
+    DOCKERFILE: ai-service/Dockerfile
+    CONTEXT: ai-service
+  needs: ["py:lint"]
+

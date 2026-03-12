@@ -1,0 +1,308 @@
+version: "3.9"
+
+services:
+  # ============================================
+  # Infrastructure
+  # ============================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: autodream-postgres
+    environment:
+      POSTGRES_USER: autodream
+      POSTGRES_PASSWORD: autodream_dev
+      POSTGRES_DB: autodreamapplier
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodream -d autodreamapplier"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: autodream-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: autodream-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: autodream-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb local/autodream-resumes-dev --ignore-existing;
+      mc mb local/autodream-screenshots-dev --ignore-existing;
+      echo 'Buckets created successfully';
+      "
+
+  db-migrator:
+    image: migrate/migrate:v4.17.1
+    container_name: autodream-migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://autodream:autodream_dev@postgres:5432/autodreamapplier?sslmode=disable
+      - up
+
+  # ============================================
+  # Application Services
+  # ============================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: deploy/docker/api-gateway.Dockerfile
+    container_name: autodream-api-gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - S3_ENDPOINT=http://minio:9000
+      - AI_SERVICE_URL=http://ai-service:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: autodream-ai-service
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    environment:
+      - PORT=8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  job-discovery:
+    build:
+      context: .
+      dockerfile: deploy/docker/job-discovery.Dockerfile
+    container_name: autodream-job-discovery
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - JOB_DISCOVERY_PORT=8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  job-matcher:
+    build:
+      context: .
+      dockerfile: deploy/docker/job-matcher.Dockerfile
+    container_name: autodream-job-matcher
+    ports:
+      - "8083:8083"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - JOB_MATCHER_PORT=8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  apply-engine:
+    build:
+      context: .
+      dockerfile: deploy/docker/apply-engine.Dockerfile
+    container_name: autodream-apply-engine
+    ports:
+      - "8084:8084"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - S3_ENDPOINT=http://minio:9000
+      - AI_SERVICE_URL=http://ai-service:8081
+      - BROWSER_POOL_URL=http://browser-pool:8085
+      - APPLY_ENGINE_PORT=8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+      browser-pool:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  browser-pool:
+    build:
+      context: .
+      dockerfile: deploy/docker/browser-node.Dockerfile
+    container_name: autodream-browser-pool
+    ports:
+      - "8085:8085"
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - BROWSER_POOL_PORT=8085
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    # Browser nodes need a larger shared memory space for Chromium
+    shm_size: "1gb"
+
+  # ============================================
+  # Monitoring
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: autodream-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"           # allows POST /-/reload to hot-reload config
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: autodream-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=autodream_dev
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # Redis exporter — exposes Redis metrics for Prometheus to scrape.
+  # Tracks queue depth, memory usage, and keyspace hit-rate.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.59.0
+    container_name: autodream-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:

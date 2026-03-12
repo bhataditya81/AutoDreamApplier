@@ -1,0 +1,14 @@
+.aws-cli:
+  image: amazon/aws-cli:2
+  before_script:
+    - aws --version
+    - |
+      if [ -z "${AWS_REGION:-}" ]; then
+        echo "AWS_REGION is required" >&2
+        exit 1
+      fi
+      if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "AWS credentials are required (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)" >&2
+        exit 1
+      fi
+

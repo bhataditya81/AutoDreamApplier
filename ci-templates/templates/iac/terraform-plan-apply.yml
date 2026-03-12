@@ -1,0 +1,43 @@
+.terraform:
+  image: hashicorp/terraform:1.9
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_INPUT: "false"
+  before_script:
+    - terraform -version
+    - |
+      if [ -z "${TF_ROOT:-}" ]; then
+        echo "Missing TF_ROOT (path to terraform module, e.g. infra/terraform/env/dev)" >&2
+        exit 1
+      fi
+      cd "${TF_ROOT}"
+    - terraform init -input=false
+
+terraform:validate:
+  extends: .terraform
+  stage: validate
+  script:
+    - terraform fmt -check -recursive
+    - terraform validate
+
+terraform:plan:
+  extends: .terraform
+  stage: build
+  script:
+    - terraform plan -out tfplan
+  artifacts:
+    expire_in: 7 days
+    paths:
+      - ${TF_ROOT}/tfplan
+
+terraform:apply:
+  extends: .terraform
+  stage: deploy_dev
+  when: manual
+  script:
+    - terraform apply -auto-approve tfplan
+
+# Notes:
+# - For remote state: configure `backend "s3"` with a DynamoDB lock table in your Terraform code.
+# - Consider separate state per environment (dev/prod) and mark prod apply as protected/manual.
+

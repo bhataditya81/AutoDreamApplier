@@ -1,0 +1,30 @@
+py:lint:
+  stage: validate
+  image: python:3.11-slim
+  rules: !reference [.rules, ci, rules]
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install ruff
+    - pip install -r ai-service/requirements.txt
+  script:
+    - ruff check ai-service
+
+py:test:
+  stage: test
+  image: python:3.11-slim
+  rules: !reference [.rules, ci, rules]
+  variables:
+    APP_ENV: test
+    ANTHROPIC_API_KEY: test-key-placeholder
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-asyncio httpx
+    - pip install -r ai-service/requirements.txt
+  script:
+    - |
+      if [ -d "ai-service/tests" ]; then
+        pytest -q ai-service/tests
+      else
+        echo "No ai-service/tests directory; skipping."
+      fi
+

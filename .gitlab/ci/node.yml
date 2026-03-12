@@ -1,0 +1,50 @@
+web:lint:
+  stage: validate
+  image: node:20-alpine
+  rules: !reference [.rules, ci, rules]
+  before_script:
+    - npm --prefix frontend ci
+  script:
+    - npm --prefix frontend run lint
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+
+web:typecheck:
+  stage: validate
+  image: node:20-alpine
+  rules: !reference [.rules, ci, rules]
+  before_script:
+    - npm --prefix frontend ci
+  script:
+    - npm --prefix frontend run type-check
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+
+web:build:
+  stage: build
+  image: node:20-alpine
+  rules: !reference [.rules, ci, rules]
+  before_script:
+    - npm --prefix frontend ci
+  script:
+    - npm --prefix frontend run build
+  artifacts:
+    when: on_success
+    expire_in: 7 days
+    paths:
+      - frontend/.next/
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+

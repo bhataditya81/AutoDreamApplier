@@ -1,0 +1,98 @@
+# Prometheus configuration for AutoDreamApplier local development.
+# Scrapes all Go services plus Redis and itself.
+# In production this lives in ECS/Fargate config or a ConfigMap.
+
+global:
+  scrape_interval: 15s      # how often to scrape each target
+  evaluation_interval: 15s  # how often to evaluate alerting rules
+  scrape_timeout: 10s
+
+  # Labels added to every time series and alert sent by this Prometheus.
+  external_labels:
+    env: development
+    project: autodreamapplier
+
+# ── Alerting ──────────────────────────────────────────────────────────────────
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+# ── Rule files ────────────────────────────────────────────────────────────────
+# rule_files:
+#   - "alerts/*.yml"
+
+# ── Scrape configs ────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus itself
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── Go services ─────────────────────────────────────────────────────────────
+  # Each Go service exposes a /metrics endpoint via the prometheus/client_golang
+  # middleware. The port numbers match docker-compose port mappings.
+  - job_name: api-gateway
+    static_configs:
+      - targets: ["api-gateway:8080"]
+    metrics_path: /metrics
+
+  - job_name: apply-engine
+    static_configs:
+      - targets: ["apply-engine:8084"]
+    metrics_path: /metrics
+
+  - job_name: job-discovery
+    static_configs:
+      - targets: ["job-discovery:8082"]
+    metrics_path: /metrics
+
+  - job_name: job-matcher
+    static_configs:
+      - targets: ["job-matcher:8083"]
+    metrics_path: /metrics
+
+  - job_name: browser-pool
+    static_configs:
+      - targets: ["browser-pool:8085"]
+    metrics_path: /metrics
+
+  # ── Redis exporter ───────────────────────────────────────────────────────────
+  # Uses oliver006/redis_exporter (added to docker-compose when monitoring is
+  # enabled). Exposes queue depth, memory, and hit-rate metrics.
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # ── Key business metrics (from apply-engine /metrics) ─────────────────────
+  # These are custom Prometheus counters / histograms exposed by the Go services:
+  #
+  #  autodream_application_total{status="applied|failed"}
+  #    → total applications attempted and their outcomes
+  #
+  #  autodream_application_duration_seconds{stage="ai_prep|browser_apply"}
+  #    → histogram of how long each pipeline stage takes
+  #
+  #  autodream_browser_pool_active
+  #    → gauge: number of Playwright sessions currently in use
+  #
+  #  autodream_browser_pool_capacity
+  #    → gauge: total available browser slots
+  #
+  #  autodream_captcha_total
+  #    → counter: CAPTCHA events (trigger auto-pause at >5%)
+  #
+  #  autodream_queue_depth{queue="ai_prep|browser_apply"}
+  #    → gauge: current Asynq queue depth (scraped from apply-engine)
+  #
+  #  autodream_ats_error_total{ats="greenhouse|lever|workday"}
+  #    → counter: per-ATS plugin errors
+  #
+  # Alert thresholds (to be wired into alertmanager rules):
+  #   app_success_rate           < 85%  → PagerDuty
+  #   browser_pool_utilisation   > 90%  → scale-up signal
+  #   captcha_rate               > 5%   → auto-pause + alert
+  #   queue_depth                > 1000 → scale-up signal
+  #   ai_prep_latency_p95        > 15s  → latency alert
+  #   browser_apply_latency_p95  > 120s → latency alert

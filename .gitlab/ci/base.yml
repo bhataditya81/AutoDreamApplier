@@ -1,0 +1,28 @@
+stages:
+  - validate
+  - test
+  - build
+  - package
+  - deploy_dev
+  - deploy_prod
+
+default:
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - api_failure
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+variables:
+  GIT_DEPTH: "20"
+  DOCKER_TLS_CERTDIR: ""  # required for docker:dind on GitLab shared runners
+  DOCKER_DRIVER: overlay2
+

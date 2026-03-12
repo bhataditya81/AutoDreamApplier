@@ -1,0 +1,37 @@
+.deploy-ec2-ssm:
+  image: amazon/aws-cli:2
+  before_script:
+    - aws --version
+    - |
+      if [ -z "${AWS_REGION:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "Missing AWS credentials (AWS_REGION/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)" >&2
+        exit 1
+      fi
+      if [ -z "${SSM_TARGETS:-}" ] || [ -z "${SSM_COMMAND:-}" ]; then
+        echo "Missing SSM_TARGETS/SSM_COMMAND" >&2
+        exit 1
+      fi
+  script:
+    - |
+      set -euo pipefail
+
+      # Example:
+      # SSM_TARGETS='Key=tag:Role,Values=my-app'
+      # SSM_COMMAND='sudo systemctl restart my-app'
+      COMMAND_ID="$(aws ssm send-command \
+        --region "${AWS_REGION}" \
+        --document-name 'AWS-RunShellScript' \
+        --targets "${SSM_TARGETS}" \
+        --parameters commands="${SSM_COMMAND}" \
+        --comment "GitLab deploy ${CI_PROJECT_PATH}@${CI_COMMIT_SHA}" \
+        --query 'Command.CommandId' \
+        --output text)"
+
+      echo "SSM command id: ${COMMAND_ID}"
+      aws ssm wait command-executed --region "${AWS_REGION}" --command-id "${COMMAND_ID}" --instance-id "$(aws ssm list-command-invocations --region "${AWS_REGION}" --command-id "${COMMAND_ID}" --details --query 'CommandInvocations[0].InstanceId' --output text)"
+
+      echo "SSM deploy finished"
+
+# Notes:
+# - For full ASG rollouts (blue/green, traffic shifting), prefer AWS CodeDeploy or an ALB + immutable instance refresh strategy.
+

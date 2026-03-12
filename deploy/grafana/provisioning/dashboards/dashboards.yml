@@ -1,0 +1,20 @@
+# Grafana dashboard provisioning for AutoDreamApplier local development.
+# Loads dashboard JSON files from this directory automatically so no manual
+# import is required after `docker compose up`.
+#
+# In production this lives in an ECS task definition environment or a
+# Kubernetes ConfigMap mounted at /etc/grafana/provisioning/dashboards/.
+
+apiVersion: 1
+
+providers:
+  - name: AutoDreamApplier
+    orgId: 1
+    folder: AutoDreamApplier
+    type: file
+    disableDeletion: true        # prevent dashboard deletion via UI
+    updateIntervalSeconds: 30    # poll for JSON file changes (handy in dev)
+    allowUiUpdates: false        # changes must go through version control
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

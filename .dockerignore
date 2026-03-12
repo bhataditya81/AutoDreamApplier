@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.github
+
+# Antigravity / Gemini AI Logs
+.gemini
+.claude
+
+# Build artifacts and binaries
+bin/
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+*.app
+
+# Go dependency cache
+vendor/
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log*
+
+# Python & AI Service
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+
+# Docker environment overrides
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+docker-compose.override.yml
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+*.md
+
+# Local data / DB volumes
+postgres_data/
+redis_data/
+minio_data/
+grafana_data/
+prometheus_data/

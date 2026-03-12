@@ -1,0 +1,25 @@
+.deploy-lambda-zip:
+  image: amazon/aws-cli:2
+  before_script:
+    - aws --version
+    - |
+      if [ -z "${AWS_REGION:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "Missing AWS credentials (AWS_REGION/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)" >&2
+        exit 1
+      fi
+      if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ -z "${LAMBDA_ZIP_PATH:-}" ]; then
+        echo "Missing LAMBDA_FUNCTION_NAME/LAMBDA_ZIP_PATH" >&2
+        exit 1
+      fi
+  script:
+    - |
+      set -euo pipefail
+      if [ ! -f "${LAMBDA_ZIP_PATH}" ]; then
+        echo "Zip not found at ${LAMBDA_ZIP_PATH}" >&2
+        exit 1
+      fi
+      aws lambda update-function-code \
+        --function-name "${LAMBDA_FUNCTION_NAME}" \
+        --zip-file "fileb://${LAMBDA_ZIP_PATH}" \
+        --region "${AWS_REGION}"
+
