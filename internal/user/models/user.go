@@ -23,18 +23,23 @@ type User struct {
 
 // UserPreferences represents user's job search preferences.
 type UserPreferences struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	UserID          uuid.UUID  `json:"user_id" db:"user_id"`
-	TargetTitles    []string   `json:"target_titles" db:"target_titles"`
-	Locations       []string   `json:"locations" db:"locations"`
-	RemotePref      string     `json:"remote_pref" db:"remote_pref"`
-	SalaryMin       *int       `json:"salary_min" db:"salary_min"`
-	SalaryMax       *int       `json:"salary_max" db:"salary_max"`
-	SalaryCurrency  string     `json:"salary_currency" db:"salary_currency"`
-	Exclusions      []string   `json:"exclusions" db:"exclusions"`
-	AiTailorEnabled bool       `json:"ai_tailor_enabled" db:"ai_tailor_enabled"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	ID                    uuid.UUID  `json:"id" db:"id"`
+	UserID                uuid.UUID  `json:"user_id" db:"user_id"`
+	TargetTitles          []string   `json:"target_titles" db:"target_titles"`
+	Locations             []string   `json:"locations" db:"locations"`
+	RemotePref            string     `json:"remote_pref" db:"remote_pref"`
+	SalaryMin             *int       `json:"salary_min" db:"salary_min"`
+	SalaryMax             *int       `json:"salary_max" db:"salary_max"`
+	SalaryCurrency        string     `json:"salary_currency" db:"salary_currency"`
+	Exclusions            []string   `json:"exclusions" db:"exclusions"`
+	AiTailorEnabled       bool       `json:"ai_tailor_enabled" db:"ai_tailor_enabled"`
+	AutoApplyEnabled      bool       `json:"autoApplyEnabled" db:"auto_apply_enabled"`
+	DailyApplicationLimit int        `json:"dailyApplicationLimit" db:"daily_application_limit"`
+	ApplyStartHour        int        `json:"applyStartHour" db:"apply_start_hour"`
+	ApplyEndHour          int        `json:"applyEndHour" db:"apply_end_hour"`
+	ApplyTimezone         string     `json:"applyTimezone" db:"apply_timezone"`
+	CreatedAt             time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // Resume represents an uploaded resume.
@@ -66,14 +71,19 @@ type UpdateUserRequest struct {
 
 // UpdatePreferencesRequest is the payload for updating job preferences.
 type UpdatePreferencesRequest struct {
-	TargetTitles   []string `json:"target_titles" validate:"required,min=1"`
-	Locations      []string `json:"locations"`
-	RemotePref     string   `json:"remote_pref" validate:"required,oneof=remote hybrid onsite any"`
-	SalaryMin      *int     `json:"salary_min" validate:"omitempty,min=0"`
-	SalaryMax      *int     `json:"salary_max" validate:"omitempty,min=0"`
-	SalaryCurrency string   `json:"salary_currency" validate:"omitempty,len=3"`
-	Exclusions     []string `json:"exclusions"`
-	AiTailorEnabled *bool   `json:"ai_tailor_enabled,omitempty"`
+	TargetTitles          []string `json:"target_titles" validate:"required,min=1"`
+	Locations             []string `json:"locations"`
+	RemotePref            string   `json:"remote_pref" validate:"required,oneof=remote hybrid onsite any"`
+	SalaryMin             *int     `json:"salary_min" validate:"omitempty,min=0"`
+	SalaryMax             *int     `json:"salary_max" validate:"omitempty,min=0"`
+	SalaryCurrency        string   `json:"salary_currency" validate:"omitempty,len=3"`
+	Exclusions            []string `json:"exclusions"`
+	AiTailorEnabled       *bool    `json:"ai_tailor_enabled,omitempty"`
+	AutoApplyEnabled      *bool    `json:"autoApplyEnabled,omitempty"`
+	DailyApplicationLimit *int     `json:"dailyApplicationLimit,omitempty"`
+	ApplyStartHour        *int     `json:"applyStartHour,omitempty"`
+	ApplyEndHour          *int     `json:"applyEndHour,omitempty"`
+	ApplyTimezone         string   `json:"applyTimezone,omitempty"`
 }
 
 // UploadResumeResponse is returned after resume upload.

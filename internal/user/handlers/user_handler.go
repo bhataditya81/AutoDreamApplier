@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -162,6 +163,40 @@ func (h *UserHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) 
 	if len(req.TargetTitles) == 0 {
 		response.BadRequest(w, "at least one target title is required")
 		return
+	}
+
+	// Validate auto-apply schedule fields.
+	if req.DailyApplicationLimit != nil {
+		if *req.DailyApplicationLimit < 1 || *req.DailyApplicationLimit > 50 {
+			response.BadRequest(w, "dailyApplicationLimit must be between 1 and 50")
+			return
+		}
+	}
+	if req.ApplyStartHour != nil {
+		if *req.ApplyStartHour < 0 || *req.ApplyStartHour > 23 {
+			response.BadRequest(w, "applyStartHour must be between 0 and 23")
+			return
+		}
+	}
+	if req.ApplyEndHour != nil {
+		if *req.ApplyEndHour < 0 || *req.ApplyEndHour > 23 {
+			response.BadRequest(w, "applyEndHour must be between 0 and 23")
+			return
+		}
+	}
+	if req.ApplyStartHour != nil && req.ApplyEndHour != nil {
+		if *req.ApplyStartHour >= *req.ApplyEndHour {
+			response.BadRequest(w, "applyStartHour must be less than applyEndHour")
+			return
+		}
+	}
+	if req.ApplyTimezone != "" {
+		if _, err := time.LoadLocation(req.ApplyTimezone); err != nil {
+			response.BadRequest(w, "applyTimezone is not a valid timezone")
+			return
+		}
+	} else {
+		req.ApplyTimezone = "UTC"
 	}
 
 	prefs, err := h.repo.UpsertPreferences(r.Context(), user.ID, &req)

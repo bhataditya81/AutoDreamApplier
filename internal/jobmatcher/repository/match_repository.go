@@ -370,6 +370,41 @@ func (r *MatchRepository) CountByStatus(ctx context.Context, userID uuid.UUID) (
 	return counts, rows.Err()
 }
 
+// ListPendingMatches returns all pending matches for a user, ordered by score descending.
+// Used by AutoApproveService to find candidates for auto-approval.
+func (r *MatchRepository) ListPendingMatches(ctx context.Context, userID uuid.UUID) ([]models.Match, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, user_id, job_id, match_score, match_breakdown, status, created_at, updated_at
+		FROM matches
+		WHERE user_id = $1 AND status = 'pending'
+		ORDER BY match_score DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list pending matches: %w", err)
+	}
+	defer rows.Close()
+	return scanMatches(rows)
+}
+
+// UpdateMatchStatus transitions a match to a new status by ID (no user scope check).
+// Intended for internal service use (e.g. AutoApproveService). For user-scoped
+// updates use UpdateStatus instead.
+func (r *MatchRepository) UpdateMatchStatus(ctx context.Context, matchID uuid.UUID, status string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE matches SET status = $1, updated_at = NOW()
+		WHERE id = $2`,
+		status, matchID,
+	)
+	if err != nil {
+		return fmt.Errorf("update match status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func scanMatches(rows pgx.Rows) ([]models.Match, error) {
