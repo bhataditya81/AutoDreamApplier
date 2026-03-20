@@ -144,12 +144,19 @@ func (r *UserRepository) GetPreferences(ctx context.Context, userID uuid.UUID) (
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, user_id, target_titles, locations, remote_pref,
 		        salary_min, salary_max, salary_currency, exclusions,
-		        ai_tailor_enabled, created_at, updated_at
+		        ai_tailor_enabled,
+		        COALESCE(slack_webhook_url, ''),
+		        COALESCE(discord_webhook_url, ''),
+		        COALESCE(webhook_events, '{}'),
+		        COALESCE(email_digest_enabled, true),
+		        created_at, updated_at
 		 FROM user_preferences WHERE user_id = $1`, userID,
 	).Scan(
 		&prefs.ID, &prefs.UserID, &prefs.TargetTitles, &prefs.Locations,
 		&prefs.RemotePref, &prefs.SalaryMin, &prefs.SalaryMax,
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
+		&prefs.SlackWebhookURL, &prefs.DiscordWebhookURL, &prefs.WebhookEvents,
+		&prefs.EmailDigestEnabled,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
 	)
 	if err != nil {
@@ -169,28 +176,48 @@ func (r *UserRepository) UpsertPreferences(ctx context.Context, userID uuid.UUID
 		currency = "USD"
 	}
 
+	// Normalise webhook events — default to empty array when nil.
+	webhookEvents := req.WebhookEvents
+	if webhookEvents == nil {
+		webhookEvents = []string{}
+	}
+
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO user_preferences (user_id, target_titles, locations, remote_pref,
-		                                salary_min, salary_max, salary_currency, exclusions, ai_tailor_enabled)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, true))
+		                                salary_min, salary_max, salary_currency, exclusions, ai_tailor_enabled,
+		                                slack_webhook_url, discord_webhook_url, webhook_events, email_digest_enabled)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, true),
+		         NULLIF($10, ''), NULLIF($11, ''), $12, COALESCE($13, true))
 		 ON CONFLICT (user_id) DO UPDATE SET
-		   target_titles = EXCLUDED.target_titles,
-		   locations = EXCLUDED.locations,
-		   remote_pref = EXCLUDED.remote_pref,
-		   salary_min = EXCLUDED.salary_min,
-		   salary_max = EXCLUDED.salary_max,
-		   salary_currency = EXCLUDED.salary_currency,
-		   exclusions = EXCLUDED.exclusions,
-		   ai_tailor_enabled = COALESCE($9, user_preferences.ai_tailor_enabled)
+		   target_titles        = EXCLUDED.target_titles,
+		   locations            = EXCLUDED.locations,
+		   remote_pref          = EXCLUDED.remote_pref,
+		   salary_min           = EXCLUDED.salary_min,
+		   salary_max           = EXCLUDED.salary_max,
+		   salary_currency      = EXCLUDED.salary_currency,
+		   exclusions           = EXCLUDED.exclusions,
+		   ai_tailor_enabled    = COALESCE($9, user_preferences.ai_tailor_enabled),
+		   slack_webhook_url    = COALESCE(NULLIF($10, ''), user_preferences.slack_webhook_url),
+		   discord_webhook_url  = COALESCE(NULLIF($11, ''), user_preferences.discord_webhook_url),
+		   webhook_events       = $12,
+		   email_digest_enabled = COALESCE($13, user_preferences.email_digest_enabled)
 		 RETURNING id, user_id, target_titles, locations, remote_pref,
 		           salary_min, salary_max, salary_currency, exclusions,
-		           ai_tailor_enabled, created_at, updated_at`,
+		           ai_tailor_enabled,
+		           COALESCE(slack_webhook_url, ''),
+		           COALESCE(discord_webhook_url, ''),
+		           COALESCE(webhook_events, '{}'),
+		           COALESCE(email_digest_enabled, true),
+		           created_at, updated_at`,
 		userID, req.TargetTitles, req.Locations, req.RemotePref,
 		req.SalaryMin, req.SalaryMax, currency, req.Exclusions, req.AiTailorEnabled,
+		req.SlackWebhookURL, req.DiscordWebhookURL, webhookEvents, req.EmailDigestEnabled,
 	).Scan(
 		&prefs.ID, &prefs.UserID, &prefs.TargetTitles, &prefs.Locations,
 		&prefs.RemotePref, &prefs.SalaryMin, &prefs.SalaryMax,
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
+		&prefs.SlackWebhookURL, &prefs.DiscordWebhookURL, &prefs.WebhookEvents,
+		&prefs.EmailDigestEnabled,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
 	)
 	if err != nil {
