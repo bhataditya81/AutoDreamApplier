@@ -15,6 +15,7 @@ import (
 
 	"github.com/bhata/AutoDreamApplier/internal/auth"
 	"github.com/bhata/AutoDreamApplier/internal/crypto"
+	"github.com/bhata/AutoDreamApplier/internal/notification"
 	resumeparser "github.com/bhata/AutoDreamApplier/internal/resume"
 	"github.com/bhata/AutoDreamApplier/internal/user/models"
 	"github.com/bhata/AutoDreamApplier/internal/user/repository"
@@ -26,16 +27,23 @@ const maxResumeSize = 10 << 20 // 10MB
 
 // UserHandler handles user-related HTTP requests.
 type UserHandler struct {
-	repo          *repository.UserRepository
-	s3            *s3client.Client
-	bucketResumes string
-	encryptionKey string // hex-encoded 32-byte key for AES-256-GCM
-	log           zerolog.Logger
+	repo           *repository.UserRepository
+	s3             *s3client.Client
+	bucketResumes  string
+	encryptionKey  string // hex-encoded 32-byte key for AES-256-GCM
+	webhookService *notification.WebhookService
+	log            zerolog.Logger
 }
 
 // NewUserHandler creates a new UserHandler.
 func NewUserHandler(repo *repository.UserRepository, s3 *s3client.Client, bucketResumes string, log zerolog.Logger) *UserHandler {
 	return &UserHandler{repo: repo, s3: s3, bucketResumes: bucketResumes, log: log}
+}
+
+// WithWebhookService sets the WebhookService used to validate webhook URLs on save.
+func (h *UserHandler) WithWebhookService(ws *notification.WebhookService) *UserHandler {
+	h.webhookService = ws
+	return h
 }
 
 // WithEncryptionKey sets the AES-256-GCM encryption key (hex-encoded, 32 bytes).
@@ -162,6 +170,24 @@ func (h *UserHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) 
 	if len(req.TargetTitles) == 0 {
 		response.BadRequest(w, "at least one target title is required")
 		return
+	}
+
+	// Validate webhook URLs if provided.
+	if h.webhookService != nil {
+		if req.SlackWebhookURL != "" {
+			if err := h.webhookService.ValidateURL(r.Context(), req.SlackWebhookURL); err != nil {
+				h.log.Warn().Err(err).Str("url", req.SlackWebhookURL).Msg("slack webhook URL validation failed")
+				response.BadRequest(w, "slack_webhook_url is unreachable: "+err.Error())
+				return
+			}
+		}
+		if req.DiscordWebhookURL != "" {
+			if err := h.webhookService.ValidateURL(r.Context(), req.DiscordWebhookURL); err != nil {
+				h.log.Warn().Err(err).Str("url", req.DiscordWebhookURL).Msg("discord webhook URL validation failed")
+				response.BadRequest(w, "discord_webhook_url is unreachable: "+err.Error())
+				return
+			}
+		}
 	}
 
 	prefs, err := h.repo.UpsertPreferences(r.Context(), user.ID, &req)
