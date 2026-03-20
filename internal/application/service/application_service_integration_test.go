@@ -243,7 +243,7 @@ func TestService_ListForUser(t *testing.T) {
 	_ = app2ID
 
 	t.Run("all_statuses", func(t *testing.T) {
-		apps, total, err := svc.ListForUser(ctx, f.userID, "", 20, 0)
+		apps, total, err := svc.ListForUser(ctx, f.userID, "", "", 20, 0)
 		if err != nil {
 			t.Fatalf("ListForUser: %v", err)
 		}
@@ -256,7 +256,7 @@ func TestService_ListForUser(t *testing.T) {
 	})
 
 	t.Run("filter_queued", func(t *testing.T) {
-		apps, total, err := svc.ListForUser(ctx, f.userID, models.StatusQueued, 20, 0)
+		apps, total, err := svc.ListForUser(ctx, f.userID, models.StatusQueued, "", 20, 0)
 		if err != nil {
 			t.Fatalf("ListForUser filtered: %v", err)
 		}
@@ -271,7 +271,7 @@ func TestService_ListForUser(t *testing.T) {
 	})
 
 	t.Run("no_results_for_unknown_user", func(t *testing.T) {
-		apps, total, err := svc.ListForUser(ctx, uuid.New(), "", 20, 0)
+		apps, total, err := svc.ListForUser(ctx, uuid.New(), "", "", 20, 0)
 		if err != nil {
 			t.Fatalf("ListForUser unknown user: %v", err)
 		}

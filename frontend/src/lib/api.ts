@@ -131,6 +131,13 @@ export async function getApplication(id: string): Promise<Application> {
   return apiFetch<Application>(`/applications/${id}`);
 }
 
+export async function withdrawApplication(applicationId: string): Promise<void> {
+  await apiFetch<void>(`/applications/${applicationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "withdrawn" }),
+  });
+}
+
 // ── Resumes ───────────────────────────────────────────────────────────────────
 
 export async function listResumes(): Promise<Resume[]> {

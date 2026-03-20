@@ -1,4 +1,5 @@
-import { ExternalLink, Building2, MapPin } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Building2, MapPin, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { StatusTimeline } from "./status-timeline";
 import { formatDate } from "@/lib/utils";
@@ -66,6 +67,17 @@ export function ApplicationRow({ application }: ApplicationRowProps) {
           {application.errorMessage}
         </p>
       )}
+
+      {/* Footer: Details link */}
+      <div className="flex justify-end pt-0.5">
+        <Link
+          href={`/dashboard/applications/${application.id}`}
+          className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-brand-600 transition-colors"
+        >
+          Details
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
     </div>
   );
 }

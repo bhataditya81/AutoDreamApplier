@@ -134,6 +134,13 @@ func main() {
 	atsRegistry.Register(atsplugins.NewGreenhousePlugin(browserClient, log))
 	atsRegistry.Register(atsplugins.NewLeverPlugin(browserClient, log))
 	atsRegistry.Register(atsplugins.NewWorkdayPlugin(browserClient, log))
+	atsRegistry.Register(atsplugins.NewICIMSPlugin(browserClient, log))
+	atsRegistry.Register(atsplugins.NewTaleoPlugin(browserClient, log))
+	atsRegistry.Register(atsplugins.NewSuccessFactorsPlugin(browserClient, log))
+	atsRegistry.Register(atsplugins.NewSmartRecruitersPlugin(browserClient, log))
+	atsRegistry.Register(atsplugins.NewBambooHRPlugin(browserClient, log))
+	// Generic fallback MUST be registered last — it matches any URL.
+	atsRegistry.Register(atsplugins.NewGenericPlugin(browserClient, log))
 
 	// ── Task workers ──────────────────────────────────────────────────────────
 	aiPrepWorker := workers.NewAIPrepWorker(
