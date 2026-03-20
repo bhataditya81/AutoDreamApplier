@@ -1,0 +1,38 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  size-check:
+    name: PR Size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check PR size
+        run: |
+          FILES=$(git diff --name-only origin/main...HEAD | wc -l)
+          echo "Changed files: $FILES"
+          if [ "$FILES" -gt 50 ]; then
+            echo "⚠️  Large PR ($FILES files). Consider splitting."
+          fi
+
+  go-mod-tidy:
+    name: go mod tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: go mod tidy
+      - name: Check for changes
+        run: |
+          if [ -n "$(git status --porcelain go.sum go.mod)" ]; then
+            echo "go mod tidy produced changes — please run 'go mod tidy' and commit"
+            git diff go.mod go.sum
+            exit 1
+          fi
