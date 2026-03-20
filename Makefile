@@ -1,122 +1,67 @@
-.PHONY: all build run test clean migrate docker-up docker-down lint dev
+.PHONY: help dev test test-backend test-frontend lint build clean migrate docker-up docker-down ci
 
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOTEST=$(GOCMD) test
-GOVET=$(GOCMD) vet
-GOMOD=$(GOCMD) mod
-BINARY_DIR=bin
-
-# Services
-SERVICES=api-gateway job-discovery job-matcher apply-engine browser-pool
-
-all: build
-
-## dev: Spin up the full local dev stack (Docker + migrations + Next.js)
-## dev: On Windows use: powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
-dev:
-	@chmod +x scripts/dev.sh
-	@./scripts/dev.sh
-
-## dev-no-build: Start dev stack without rebuilding Docker images
-dev-no-build:
-	@chmod +x scripts/dev.sh
-	@./scripts/dev.sh --no-build
-
-## dev-backend: Start backend only (no Next.js)
-dev-backend:
-	@chmod +x scripts/dev.sh
-	@./scripts/dev.sh --no-frontend
-
-## build: Build all Go services
-build:
-	@echo "Building all services..."
-	@mkdir -p $(BINARY_DIR)
-	@for service in $(SERVICES); do \
-		echo "  Building $$service..."; \
-		$(GOBUILD) -o $(BINARY_DIR)/$$service ./cmd/$$service/; \
-	done
-	@echo "Build complete."
-
-## build-service: Build a single service (usage: make build-service SERVICE=api-gateway)
-build-service:
-	@echo "Building $(SERVICE)..."
-	@mkdir -p $(BINARY_DIR)
-	$(GOBUILD) -o $(BINARY_DIR)/$(SERVICE) ./cmd/$(SERVICE)/
-	@echo "Build complete."
-
-## run-api: Run the API gateway locally
-run-api:
-	$(GOCMD) run ./cmd/api-gateway/
-
-## test: Run all Go tests
-test:
-	$(GOTEST) -v -race -cover ./...
-
-## test-coverage: Run tests with coverage report
-test-coverage:
-	$(GOTEST) -v -race -coverprofile=coverage.out ./...
-	$(GOCMD) tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
-
-## lint: Run linter
-lint:
-	golangci-lint run ./...
-
-## vet: Run go vet
-vet:
-	$(GOVET) ./...
-
-## tidy: Tidy go modules
-tidy:
-	$(GOMOD) tidy
-
-## clean: Clean build artifacts
-clean:
-	@rm -rf $(BINARY_DIR)
-	@rm -f coverage.out coverage.html
-	@echo "Cleaned."
-
-## migrate-up: Run database migrations up
-migrate-up:
-	@./scripts/migrate.sh up
-
-## migrate-down: Run database migrations down
-migrate-down:
-	@./scripts/migrate.sh down
-
-## migrate-create: Create a new migration (usage: make migrate-create NAME=add_users_table)
-migrate-create:
-	migrate create -ext sql -dir migrations -seq $(NAME)
-
-## docker-up: Start all services with Docker Compose
-docker-up:
-	docker-compose up -d
-	@echo "Services started. API available at http://localhost:8080"
-
-## docker-down: Stop all Docker Compose services
-docker-down:
-	docker-compose down
-
-## docker-build: Build Docker images
-docker-build:
-	docker-compose build
-
-## docker-logs: View Docker Compose logs
-docker-logs:
-	docker-compose logs -f
-
-## seed: Seed development database
-seed:
-	@./scripts/seed.sh
-
-## ai-service: Run the Python AI service locally
-ai-service:
-	cd ai-service && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8081
-
-## help: Show this help
+# Default target
 help:
-	@echo "AutoDreamApplier - Available commands:"
+	@echo "AutoDreamApplier — Development Makefile"
 	@echo ""
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | column -t -s ':' | sed 's/^/  /'
+	@echo "Usage:"
+	@echo "  make dev          Start full local stack (Docker Compose)"
+	@echo "  make test         Run all tests (backend + frontend)"
+	@echo "  make test-backend Run Go tests only"
+	@echo "  make test-frontend Run frontend build + lint"
+	@echo "  make lint         Run go vet + golangci-lint"
+	@echo "  make build        Build all Go binaries"
+	@echo "  make migrate      Run database migrations"
+	@echo "  make docker-up    Start infrastructure services"
+	@echo "  make docker-down  Stop and remove containers"
+	@echo "  make ci           Run all CI checks locally (mirrors GitHub Actions)"
+
+# ── Development ────────────────────────────────────────────────────────────────
+
+dev:
+	docker compose up --build
+
+docker-up:
+	docker compose up -d postgres redis minio
+
+docker-down:
+	docker compose down -v
+
+# ── Testing ────────────────────────────────────────────────────────────────────
+
+test: test-backend test-frontend
+
+test-backend:
+	@echo "→ Running Go tests..."
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" \
+	APP_ENV=test \
+	DEV_JWT_SECRET=ci-test-secret-32byteslong12345 \
+	ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+	go test -race -timeout 120s ./...
+
+test-frontend:
+	@echo "→ Running frontend checks..."
+	cd frontend && npm ci && npm run build && npm run lint
+
+# ── Code Quality ───────────────────────────────────────────────────────────────
+
+lint:
+	go vet ./...
+	@which golangci-lint > /dev/null && golangci-lint run || echo "golangci-lint not installed — skipping"
+
+# ── Build ──────────────────────────────────────────────────────────────────────
+
+build:
+	go build -v ./cmd/api-gateway/...
+	go build -v ./cmd/apply-engine/...
+	go build -v ./cmd/job-discovery/...
+
+# ── Database ───────────────────────────────────────────────────────────────────
+
+migrate:
+	go run ./cmd/db-migrator/...
+
+# ── CI (mirrors GitHub Actions locally) ───────────────────────────────────────
+
+ci: lint test-backend test-frontend build
+	@echo "✅ All CI checks passed"

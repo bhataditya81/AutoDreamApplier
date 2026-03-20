@@ -47,7 +47,6 @@ out/
 # AI/Editor tooling
 .claude/
 .cursor/
-.github/
 
 # OS
 .DS_Store
