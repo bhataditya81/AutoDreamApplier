@@ -21,15 +21,18 @@ type DiscoveryService struct {
 }
 
 // NewDiscoveryService creates a new discovery service with all registered scrapers.
-func NewDiscoveryService(repo *repository.JobRepository, log zerolog.Logger) *DiscoveryService {
+// extra scrapers (e.g. LinkedIn) are appended after the defaults and are
+// optional — pass none to use only the built-in set.
+func NewDiscoveryService(repo *repository.JobRepository, log zerolog.Logger, extra ...scrapers.Scraper) *DiscoveryService {
+	base := []scrapers.Scraper{
+		scrapers.NewIndeedScraper(),
+		scrapers.NewGlassdoorScraper(),
+		scrapers.NewZipRecruiterScraper(),
+	}
 	return &DiscoveryService{
-		repo: repo,
-		scrapers: []scrapers.Scraper{
-			scrapers.NewIndeedScraper(),
-			scrapers.NewGlassdoorScraper(),
-			scrapers.NewZipRecruiterScraper(),
-		},
-		log: log.With().Str("service", "discovery").Logger(),
+		repo:     repo,
+		scrapers: append(base, extra...),
+		log:      log.With().Str("service", "discovery").Logger(),
 	}
 }
 

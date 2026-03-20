@@ -14,6 +14,7 @@ import (
 
 	dischandler "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/handler"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
+	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
 	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
 	"github.com/bhata/AutoDreamApplier/pkg/config"
 	"github.com/bhata/AutoDreamApplier/pkg/database"
@@ -66,7 +67,19 @@ func main() {
 
 	// Initialize job discovery components
 	jobRepo := discrepo.NewJobRepository(pool)
-	jobSvc := discsvc.NewDiscoveryService(jobRepo, log)
+
+	// Register optional extra scrapers based on environment configuration.
+	// LinkedIn scraper requires a residential proxy to avoid blocks;
+	// skip registration when LINKEDIN_PROXY_URL is not set.
+	var extraScrapers []scrapers.Scraper
+	if linkedInProxy := os.Getenv("LINKEDIN_PROXY_URL"); linkedInProxy != "" {
+		log.Info().Str("proxy", linkedInProxy).Msg("LinkedIn scraper enabled")
+		extraScrapers = append(extraScrapers, scrapers.NewLinkedInScraper(linkedInProxy))
+	} else {
+		log.Info().Msg("LinkedIn scraper disabled (LINKEDIN_PROXY_URL not set)")
+	}
+
+	jobSvc := discsvc.NewDiscoveryService(jobRepo, log, extraScrapers...)
 	discoveryHandler := dischandler.New(jobSvc, log)
 
 	// Mount job discovery routes
