@@ -100,6 +100,17 @@ export interface UserPreferences {
   salaryCurrency: string;
   exclusions: string[];
   ai_tailor_enabled?: boolean;
+  // Auto-apply scheduling
+  autoApplyEnabled?: boolean;
+  dailyApplicationLimit?: number;
+  applyStartHour?: number;
+  applyEndHour?: number;
+  applyTimezone?: string;
+  // Notification settings
+  slackWebhookUrl?: string;
+  discordWebhookUrl?: string;
+  webhookEvents?: string[];
+  emailDigestEnabled?: boolean;
 }
 
 export interface Resume {

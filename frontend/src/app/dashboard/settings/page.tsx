@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { PreferencesForm } from "@/components/settings/preferences-form";
 import { CredentialsForm } from "@/components/settings/credentials-form";
+import { NotificationsForm } from "@/components/settings/notifications-form";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -18,6 +19,7 @@ export default function SettingsPage() {
           <ProfileForm />
           <PreferencesForm />
           <CredentialsForm />
+          <NotificationsForm />
         </div>
       </div>
     </div>

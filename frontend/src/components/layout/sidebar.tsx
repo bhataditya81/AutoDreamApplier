@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Layers,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth";
+import { getPreferences } from "@/lib/api";
 
 const navItems = [
   { href: "/dashboard/matches",      label: "Match Queue",  icon: LayoutDashboard },
@@ -21,6 +23,13 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [autoApplyOn, setAutoApplyOn] = useState(false);
+
+  useEffect(() => {
+    getPreferences()
+      .then((p) => setAutoApplyOn(p.autoApplyEnabled ?? false))
+      .catch(() => {/* sidebar badge is best-effort */});
+  }, []);
 
   return (
     <aside className="flex flex-col w-60 min-h-screen border-r border-border bg-white shrink-0">
@@ -54,6 +63,14 @@ export function Sidebar() {
                 aria-hidden="true"
               />
               {label}
+              {href === "/dashboard/matches" && autoApplyOn && (
+                <span
+                  title="Auto-Apply is active"
+                  className="ml-auto flex h-4 items-center rounded-full bg-green-500 px-1.5 text-[9px] font-semibold text-white leading-none"
+                >
+                  AUTO
+                </span>
+              )}
             </Link>
           );
         })}
