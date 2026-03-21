@@ -145,6 +145,11 @@ func (r *UserRepository) GetPreferences(ctx context.Context, userID uuid.UUID) (
 		`SELECT id, user_id, target_titles, locations, remote_pref,
 		        salary_min, salary_max, salary_currency, exclusions,
 		        ai_tailor_enabled,
+		        COALESCE(auto_apply_enabled, false),
+		        COALESCE(daily_application_limit, 10),
+		        COALESCE(apply_start_hour, 9),
+		        COALESCE(apply_end_hour, 17),
+		        COALESCE(apply_timezone, 'UTC'),
 		        COALESCE(slack_webhook_url, ''),
 		        COALESCE(discord_webhook_url, ''),
 		        COALESCE(webhook_events, '{}'),
@@ -155,6 +160,8 @@ func (r *UserRepository) GetPreferences(ctx context.Context, userID uuid.UUID) (
 		&prefs.ID, &prefs.UserID, &prefs.TargetTitles, &prefs.Locations,
 		&prefs.RemotePref, &prefs.SalaryMin, &prefs.SalaryMax,
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
+		&prefs.AutoApplyEnabled, &prefs.DailyApplicationLimit,
+		&prefs.ApplyStartHour, &prefs.ApplyEndHour, &prefs.ApplyTimezone,
 		&prefs.SlackWebhookURL, &prefs.DiscordWebhookURL, &prefs.WebhookEvents,
 		&prefs.EmailDigestEnabled,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
@@ -175,6 +182,10 @@ func (r *UserRepository) UpsertPreferences(ctx context.Context, userID uuid.UUID
 	if currency == "" {
 		currency = "USD"
 	}
+	timezone := req.ApplyTimezone
+	if timezone == "" {
+		timezone = "UTC"
+	}
 
 	// Normalise webhook events — default to empty array when nil.
 	webhookEvents := req.WebhookEvents
@@ -185,25 +196,38 @@ func (r *UserRepository) UpsertPreferences(ctx context.Context, userID uuid.UUID
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO user_preferences (user_id, target_titles, locations, remote_pref,
 		                                salary_min, salary_max, salary_currency, exclusions, ai_tailor_enabled,
+		                                auto_apply_enabled, daily_application_limit,
+		                                apply_start_hour, apply_end_hour, apply_timezone,
 		                                slack_webhook_url, discord_webhook_url, webhook_events, email_digest_enabled)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, true),
-		         NULLIF($10, ''), NULLIF($11, ''), $12, COALESCE($13, true))
+		         COALESCE($10, false), COALESCE($11, 10), COALESCE($12, 9), COALESCE($13, 17), $14,
+		         NULLIF($15, ''), NULLIF($16, ''), $17, COALESCE($18, true))
 		 ON CONFLICT (user_id) DO UPDATE SET
-		   target_titles        = EXCLUDED.target_titles,
-		   locations            = EXCLUDED.locations,
-		   remote_pref          = EXCLUDED.remote_pref,
-		   salary_min           = EXCLUDED.salary_min,
-		   salary_max           = EXCLUDED.salary_max,
-		   salary_currency      = EXCLUDED.salary_currency,
-		   exclusions           = EXCLUDED.exclusions,
-		   ai_tailor_enabled    = COALESCE($9, user_preferences.ai_tailor_enabled),
-		   slack_webhook_url    = COALESCE(NULLIF($10, ''), user_preferences.slack_webhook_url),
-		   discord_webhook_url  = COALESCE(NULLIF($11, ''), user_preferences.discord_webhook_url),
-		   webhook_events       = $12,
-		   email_digest_enabled = COALESCE($13, user_preferences.email_digest_enabled)
+		   target_titles           = EXCLUDED.target_titles,
+		   locations               = EXCLUDED.locations,
+		   remote_pref             = EXCLUDED.remote_pref,
+		   salary_min              = EXCLUDED.salary_min,
+		   salary_max              = EXCLUDED.salary_max,
+		   salary_currency         = EXCLUDED.salary_currency,
+		   exclusions              = EXCLUDED.exclusions,
+		   ai_tailor_enabled       = COALESCE($9,  user_preferences.ai_tailor_enabled),
+		   auto_apply_enabled      = COALESCE($10, user_preferences.auto_apply_enabled),
+		   daily_application_limit = COALESCE($11, user_preferences.daily_application_limit),
+		   apply_start_hour        = COALESCE($12, user_preferences.apply_start_hour),
+		   apply_end_hour          = COALESCE($13, user_preferences.apply_end_hour),
+		   apply_timezone          = $14,
+		   slack_webhook_url       = COALESCE(NULLIF($15, ''), user_preferences.slack_webhook_url),
+		   discord_webhook_url     = COALESCE(NULLIF($16, ''), user_preferences.discord_webhook_url),
+		   webhook_events          = $17,
+		   email_digest_enabled    = COALESCE($18, user_preferences.email_digest_enabled)
 		 RETURNING id, user_id, target_titles, locations, remote_pref,
 		           salary_min, salary_max, salary_currency, exclusions,
 		           ai_tailor_enabled,
+		           COALESCE(auto_apply_enabled, false),
+		           COALESCE(daily_application_limit, 10),
+		           COALESCE(apply_start_hour, 9),
+		           COALESCE(apply_end_hour, 17),
+		           COALESCE(apply_timezone, 'UTC'),
 		           COALESCE(slack_webhook_url, ''),
 		           COALESCE(discord_webhook_url, ''),
 		           COALESCE(webhook_events, '{}'),
@@ -211,11 +235,14 @@ func (r *UserRepository) UpsertPreferences(ctx context.Context, userID uuid.UUID
 		           created_at, updated_at`,
 		userID, req.TargetTitles, req.Locations, req.RemotePref,
 		req.SalaryMin, req.SalaryMax, currency, req.Exclusions, req.AiTailorEnabled,
+		req.AutoApplyEnabled, req.DailyApplicationLimit, req.ApplyStartHour, req.ApplyEndHour, timezone,
 		req.SlackWebhookURL, req.DiscordWebhookURL, webhookEvents, req.EmailDigestEnabled,
 	).Scan(
 		&prefs.ID, &prefs.UserID, &prefs.TargetTitles, &prefs.Locations,
 		&prefs.RemotePref, &prefs.SalaryMin, &prefs.SalaryMax,
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
+		&prefs.AutoApplyEnabled, &prefs.DailyApplicationLimit,
+		&prefs.ApplyStartHour, &prefs.ApplyEndHour, &prefs.ApplyTimezone,
 		&prefs.SlackWebhookURL, &prefs.DiscordWebhookURL, &prefs.WebhookEvents,
 		&prefs.EmailDigestEnabled,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
@@ -402,6 +429,37 @@ func (r *UserRepository) SaveBoardCredential(ctx context.Context, userID uuid.UU
 		return fmt.Errorf("saving board credential: %w", err)
 	}
 	return nil
+}
+
+// ListAutoApplyUsers returns all active users who have auto_apply_enabled set
+// in their preferences. Used by AutoApproveService.
+func (r *UserRepository) ListAutoApplyUsers(ctx context.Context) ([]*models.User, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT u.id, u.cognito_sub, u.email, u.full_name, u.tier, u.apply_mode,
+		        u.auto_threshold, u.daily_limit, u.is_active, u.created_at, u.updated_at
+		 FROM users u
+		 JOIN user_preferences p ON p.user_id = u.id
+		 WHERE u.is_active = true
+		   AND p.auto_apply_enabled = true`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing auto-apply users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		u := &models.User{}
+		if err := rows.Scan(
+			&u.ID, &u.CognitoSub, &u.Email, &u.FullName,
+			&u.Tier, &u.ApplyMode, &u.AutoThreshold, &u.DailyLimit,
+			&u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning auto-apply user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
 }
 
 func joinStrings(strs []string, sep string) string {

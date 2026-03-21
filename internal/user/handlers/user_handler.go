@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -170,24 +170,6 @@ func (h *UserHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) 
 	if len(req.TargetTitles) == 0 {
 		response.BadRequest(w, "at least one target title is required")
 		return
-	}
-
-	// Validate webhook URLs if provided.
-	if h.webhookService != nil {
-		if req.SlackWebhookURL != "" {
-			if err := h.webhookService.ValidateURL(r.Context(), req.SlackWebhookURL); err != nil {
-				h.log.Warn().Err(err).Str("url", req.SlackWebhookURL).Msg("slack webhook URL validation failed")
-				response.BadRequest(w, "slack_webhook_url is unreachable: "+err.Error())
-				return
-			}
-		}
-		if req.DiscordWebhookURL != "" {
-			if err := h.webhookService.ValidateURL(r.Context(), req.DiscordWebhookURL); err != nil {
-				h.log.Warn().Err(err).Str("url", req.DiscordWebhookURL).Msg("discord webhook URL validation failed")
-				response.BadRequest(w, "discord_webhook_url is unreachable: "+err.Error())
-				return
-			}
-		}
 	}
 
 	prefs, err := h.repo.UpsertPreferences(r.Context(), user.ID, &req)

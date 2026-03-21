@@ -29,6 +29,7 @@ type Service struct {
 	asynqClient   *asynq.Client
 	browserClient *browser.Client
 	notifier      *notification.Client // nil-safe; no-ops when SES is unconfigured
+	rateLimiter   *RateLimiter         // optional; nil = no rate limiting (backward compat)
 	log           zerolog.Logger
 }
 
@@ -50,6 +51,13 @@ func New(
 	}
 }
 
+// WithRateLimiter sets an optional Redis-backed rate limiter on the service.
+// When set, Submit will enforce per-user daily application limits.
+func (s *Service) WithRateLimiter(rl *RateLimiter) *Service {
+	s.rateLimiter = rl
+	return s
+}
+
 // Submit creates a new application record and enqueues Stage 1 (AI prep).
 // It automatically selects the user's primary resume.
 func (s *Service) Submit(ctx context.Context, userID, jobID, matchID uuid.UUID) (*models.Application, error) {
@@ -62,16 +70,31 @@ func (s *Service) Submit(ctx context.Context, userID, jobID, matchID uuid.UUID) 
 		return nil, fmt.Errorf("get primary resume: %w", err)
 	}
 
+	// ── Check User Preferences for AI Bypass + rate limiting ────────────────────
+	prefs, err := s.repo.GetPreferences(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user preferences: %w", err)
+	}
+
+	// ── Enforce daily rate limit (if configured) ────────────────────────────────
+	if s.rateLimiter != nil && prefs != nil {
+		limit := prefs.DailyApplicationLimit
+		if limit <= 0 {
+			limit = 10
+		}
+		timezone := prefs.ApplyTimezone
+		if timezone == "" {
+			timezone = "UTC"
+		}
+		if err := s.rateLimiter.CheckAndIncrement(ctx, userID, limit, timezone); err != nil {
+			return nil, fmt.Errorf("rate limit: %w", err)
+		}
+	}
+
 	// ── Create the application row ──────────────────────────────────────────────
 	app, err := s.repo.Create(ctx, userID, jobID, matchID, resume.ID)
 	if err != nil {
 		return nil, fmt.Errorf("create application: %w", err)
-	}
-
-	// ── Check User Preferences for AI Bypass ────────────────────────────────────
-	prefs, err := s.repo.GetPreferences(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get user preferences: %w", err)
 	}
 
 	if prefs != nil && !prefs.AiTailorEnabled {

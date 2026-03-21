@@ -25,10 +25,9 @@ const (
 	// Keeps each tick fast and prevents thundering-herd on the browser pool.
 	maxMatchesPerRun = 5
 
-	// businessHourStart / End define the UTC window in which auto-apply runs.
-	// TODO: respect per-user timezone when timezone is added to user_preferences.
-	businessHourStart = 9  // 09:00 UTC
-	businessHourEnd   = 17 // 17:00 UTC
+	// defaultBusinessHourStart / End define the UTC fallback window.
+	defaultBusinessHourStart = 9  // 09:00 UTC
+	defaultBusinessHourEnd   = 17 // 17:00 UTC
 )
 
 // Scheduler picks up approved matches for auto-mode users and submits them.
@@ -59,8 +58,8 @@ func New(
 func (s *Scheduler) Run(ctx context.Context) {
 	s.log.Info().
 		Dur("interval", tickInterval).
-		Int("biz_hour_start_utc", businessHourStart).
-		Int("biz_hour_end_utc", businessHourEnd).
+		Int("default_biz_hour_start_utc", defaultBusinessHourStart).
+		Int("default_biz_hour_end_utc", defaultBusinessHourEnd).
 		Msg("auto-apply scheduler started")
 
 	ticker := time.NewTicker(tickInterval)
@@ -81,12 +80,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // tick executes one scheduling cycle.
+// Each user's apply window is evaluated individually using their own timezone.
 func (s *Scheduler) tick(ctx context.Context) {
-	if !isBusinessHours() {
-		s.log.Debug().Msg("outside business hours — skipping tick")
-		return
-	}
-
 	userIDs, err := s.matchRepo.GetAutoModeUserIDs(ctx)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to fetch auto-mode user IDs")
@@ -109,7 +104,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 // processUser submits approved matches for a single user, respecting their
-// daily_limit.
+// daily_limit and per-user apply window (timezone + hours).
 func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 	log := s.log.With().Str("user_id", userID.String()).Logger()
 
@@ -117,6 +112,36 @@ func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 	user, err := s.appRepo.GetUser(ctx, userID)
 	if err != nil || user == nil {
 		log.Warn().Err(err).Msg("user not found — skipping")
+		return
+	}
+
+	// Fetch user preferences to get timezone and apply window.
+	prefs, err := s.appRepo.GetPreferences(ctx, userID)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to fetch user preferences — using defaults")
+	}
+
+	// Determine per-user apply window (fall back to UTC defaults).
+	applyTimezone := "UTC"
+	applyStartHour := defaultBusinessHourStart
+	applyEndHour := defaultBusinessHourEnd
+	if prefs != nil {
+		if prefs.ApplyTimezone != "" {
+			applyTimezone = prefs.ApplyTimezone
+		}
+		if prefs.ApplyStartHour > 0 || prefs.ApplyEndHour > 0 {
+			applyStartHour = prefs.ApplyStartHour
+			applyEndHour = prefs.ApplyEndHour
+		}
+	}
+
+	// Skip this user if outside their configured apply window.
+	if !isWithinApplyWindow(applyTimezone, applyStartHour, applyEndHour) {
+		log.Debug().
+			Str("timezone", applyTimezone).
+			Int("start_hour", applyStartHour).
+			Int("end_hour", applyEndHour).
+			Msg("outside apply window for user — skipping")
 		return
 	}
 
@@ -207,13 +232,25 @@ func (s *Scheduler) submitMatch(ctx context.Context, m matchmodels.Match) error 
 }
 
 // isBusinessHours returns true when the current UTC time falls within
-// Mon–Fri 09:00–17:00.
+// Mon–Fri using the default UTC business hours window.
+// Kept for backward compatibility; prefer isWithinApplyWindow for per-user checks.
 func isBusinessHours() bool {
-	now := time.Now().UTC()
+	return isWithinApplyWindow("UTC", defaultBusinessHourStart, defaultBusinessHourEnd)
+}
+
+// isWithinApplyWindow returns true when the current time (in the given timezone)
+// falls within Mon–Fri startHour–endHour.
+// Falls back to UTC if the timezone string is invalid.
+func isWithinApplyWindow(tz string, startHour, endHour int) bool {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
 	wd := now.Weekday()
 	if wd == time.Saturday || wd == time.Sunday {
 		return false
 	}
 	h := now.Hour()
-	return h >= businessHourStart && h < businessHourEnd
+	return h >= startHour && h < endHour
 }

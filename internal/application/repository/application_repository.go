@@ -449,12 +449,20 @@ func (r *ApplicationRepository) GetPreferences(ctx context.Context, userID uuid.
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, user_id, target_titles, locations, remote_pref,
 		        salary_min, salary_max, salary_currency, exclusions,
-		        ai_tailor_enabled, created_at, updated_at
+		        ai_tailor_enabled,
+		        COALESCE(auto_apply_enabled, false),
+		        COALESCE(daily_application_limit, 10),
+		        COALESCE(apply_start_hour, 9),
+		        COALESCE(apply_end_hour, 17),
+		        COALESCE(apply_timezone, 'UTC'),
+		        created_at, updated_at
 		 FROM user_preferences WHERE user_id = $1`, userID,
 	).Scan(
 		&prefs.ID, &prefs.UserID, &prefs.TargetTitles, &prefs.Locations,
 		&prefs.RemotePref, &prefs.SalaryMin, &prefs.SalaryMax,
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
+		&prefs.AutoApplyEnabled, &prefs.DailyApplicationLimit,
+		&prefs.ApplyStartHour, &prefs.ApplyEndHour, &prefs.ApplyTimezone,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
 	)
 	if err != nil {
