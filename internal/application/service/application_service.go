@@ -9,7 +9,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
@@ -26,7 +27,7 @@ var ErrNotFound = repository.ErrNotFound
 // Service provides business logic for application orchestration.
 type Service struct {
 	repo          *repository.ApplicationRepository
-	asynqClient   *asynq.Client
+	riverClient   *river.Client[pgx.Tx]
 	browserClient *browser.Client
 	notifier      *notification.Client // nil-safe; no-ops when SES is unconfigured
 	rateLimiter   *RateLimiter         // optional; nil = no rate limiting (backward compat)
@@ -37,14 +38,14 @@ type Service struct {
 // notifier may be nil — all notification calls become no-ops.
 func New(
 	repo *repository.ApplicationRepository,
-	asynqClient *asynq.Client,
+	riverClient *river.Client[pgx.Tx],
 	browserClient *browser.Client,
 	notifier *notification.Client,
 	log zerolog.Logger,
 ) *Service {
 	return &Service{
 		repo:          repo,
-		asynqClient:   asynqClient,
+		riverClient:   riverClient,
 		browserClient: browserClient,
 		notifier:      notifier,
 		log:           log,
@@ -112,17 +113,12 @@ func (s *Service) Submit(ctx context.Context, userID, jobID, matchID uuid.UUID) 
 			return nil, err
 		}
 
-		t, err := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+		if _, err := s.riverClient.Insert(ctx, tasks.BrowserApplyArgs{
 			ApplicationID: app.ID,
 			UserID:        userID,
 			JobID:         jobID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("build browser_apply task: %w", err)
-		}
-
-		if _, err := s.asynqClient.EnqueueContext(ctx, t); err != nil {
-			return nil, fmt.Errorf("enqueue browser_apply task: %w", err)
+		}, nil); err != nil {
+			return nil, fmt.Errorf("insert browser_apply job: %w", err)
 		}
 
 		s.log.Info().
@@ -132,19 +128,14 @@ func (s *Service) Submit(ctx context.Context, userID, jobID, matchID uuid.UUID) 
 		return app, nil
 	}
 
-	// ── Enqueue Stage 1 task (Default AI Tailoring) ───────────────────────────────
-	t, err := tasks.NewAIPrep(tasks.AIPrepPayload{
+	// ── Insert Stage 1 job — NOTIFY wakes AI prep worker immediately ─────────
+	if _, err := s.riverClient.Insert(ctx, tasks.AIPrepArgs{
 		ApplicationID: app.ID,
 		UserID:        userID,
 		JobID:         jobID,
 		ResumeID:      resume.ID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build ai_prep task: %w", err)
-	}
-
-	if _, err := s.asynqClient.EnqueueContext(ctx, t); err != nil {
-		return nil, fmt.Errorf("enqueue ai_prep task: %w", err)
+	}, nil); err != nil {
+		return nil, fmt.Errorf("insert ai_prep job: %w", err)
 	}
 
 	s.log.Info().

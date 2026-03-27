@@ -1,13 +1,13 @@
-// Package workers contains Asynq task handlers for the 2-stage apply pipeline.
+// Package workers contains River job workers for the 2-stage apply pipeline.
 package workers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 
 	aimodels "github.com/bhata/AutoDreamApplier/internal/ai"
@@ -25,18 +25,21 @@ type S3Buckets struct {
 	Screenshots string
 }
 
-// AIPrepWorker is the Stage 1 Asynq handler.
+// AIPrepWorker is the Stage 1 River worker.
 // It calls the AI service to tailor the resume + generate a cover letter +
-// pre-answer common form questions, stores the results in S3, then enqueues
-// the Stage 2 browser-apply task.
+// pre-answer common form questions, stores the results in S3, then inserts
+// the Stage 2 browser-apply job directly into the River job table.
+// Workers wake up via PostgreSQL LISTEN/NOTIFY — zero polling.
 type AIPrepWorker struct {
-	appRepo     *repository.ApplicationRepository
-	aiClient    aimodels.Provider
-	s3Client    *pkgs3.Client
-	asynqClient *asynq.Client
-	buckets     S3Buckets
-	webhookSvc  *notification.WebhookService // nil-safe; no-ops when not configured
-	log         zerolog.Logger
+	river.WorkerDefaults[tasks.AIPrepArgs]
+
+	appRepo      *repository.ApplicationRepository
+	aiClient     aimodels.Provider
+	s3Client     *pkgs3.Client
+	riverClient  *river.Client[pgx.Tx]
+	buckets      S3Buckets
+	webhookSvc   *notification.WebhookService // nil-safe; no-ops when not configured
+	log          zerolog.Logger
 }
 
 // NewAIPrepWorker constructs an AIPrepWorker.
@@ -44,7 +47,7 @@ func NewAIPrepWorker(
 	appRepo *repository.ApplicationRepository,
 	aiClient aimodels.Provider,
 	s3Client *pkgs3.Client,
-	asynqClient *asynq.Client,
+	riverClient *river.Client[pgx.Tx],
 	buckets S3Buckets,
 	log zerolog.Logger,
 ) *AIPrepWorker {
@@ -52,7 +55,7 @@ func NewAIPrepWorker(
 		appRepo:     appRepo,
 		aiClient:    aiClient,
 		s3Client:    s3Client,
-		asynqClient: asynqClient,
+		riverClient: riverClient,
 		buckets:     buckets,
 		log:         log,
 	}
@@ -65,12 +68,16 @@ func (w *AIPrepWorker) WithWebhookService(ws *notification.WebhookService) *AIPr
 	return w
 }
 
-// ProcessTask implements asynq.HandlerFunc for TypeAIPrep tasks.
-func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
-	var p tasks.AIPrepPayload
-	if err := json.Unmarshal(t.Payload(), &p); err != nil {
-		return fmt.Errorf("unmarshal ai_prep payload: %w", err)
-	}
+// SetRiverClient injects the River client after construction.
+// This breaks the circular dependency: workers must be registered before the
+// River client is created, but AIPrepWorker needs the client to enqueue Stage 2.
+func (w *AIPrepWorker) SetRiverClient(rc *river.Client[pgx.Tx]) {
+	w.riverClient = rc
+}
+
+// Work implements river.Worker for AIPrepArgs (Stage 1).
+func (w *AIPrepWorker) Work(ctx context.Context, job *river.Job[tasks.AIPrepArgs]) error {
+	p := job.Args
 
 	log := w.log.With().
 		Str("app_id", p.ApplicationID.String()).
@@ -94,7 +101,7 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("get resume: %v", err))
 	}
 
-	job, err := w.appRepo.GetJob(ctx, p.JobID)
+	job2, err := w.appRepo.GetJob(ctx, p.JobID)
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("get job: %v", err))
 	}
@@ -113,34 +120,34 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	if aiTailorEnabled {
 		tailorResp, err := w.aiClient.TailorResume(ctx, &aimodels.ResumeTailorRequest{
 			ResumeText:     resume.RawText,
-			JobTitle:       job.Title,
-			JobDescription: job.Description,
-			CompanyName:    job.Company,
+			JobTitle:       job2.Title,
+			JobDescription: job2.Description,
+			CompanyName:    job2.Company,
 			Mode:           "keyword_inject",
 		})
 		if err != nil {
 			errMsg := fmt.Sprintf("tailor resume: %v", err)
-			w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+			w.sendFailureWebhook(ctx, p.UserID, job2.Title, job2.Company, errMsg)
 			return w.failApp(ctx, p.ApplicationID, errMsg)
 		}
 		tailoredText = tailorResp.TailoredText
 
 		coverResp, err := w.aiClient.GenerateCoverLetter(ctx, &aimodels.CoverLetterRequest{
 			ResumeText:     resume.RawText,
-			JobTitle:       job.Title,
-			JobDescription: job.Description,
-			CompanyName:    job.Company,
+			JobTitle:       job2.Title,
+			JobDescription: job2.Description,
+			CompanyName:    job2.Company,
 			Tone:           "professional",
 		})
 		if err != nil {
 			errMsg := fmt.Sprintf("generate cover letter: %v", err)
-			w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+			w.sendFailureWebhook(ctx, p.UserID, job2.Title, job2.Company, errMsg)
 			return w.failApp(ctx, p.ApplicationID, errMsg)
 		}
 		coverLetter = coverResp.CoverLetter
 
 		commonQuestions := []string{
-			"Why do you want to work at " + job.Company + "?",
+			"Why do you want to work at " + job2.Company + "?",
 			"Describe your experience relevant to this role.",
 			"Are you authorized to work in the United States?",
 		}
@@ -148,7 +155,7 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			qaResp, err := w.aiClient.AnswerFormQuestion(ctx, &aimodels.FormQARequest{
 				Question:     q,
 				ResumeText:   resume.RawText,
-				JobTitle:     job.Title,
+				JobTitle:     job2.Title,
 				QuestionType: "text",
 			})
 			if err != nil {
@@ -160,7 +167,6 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 		log.Info().Msg("AI tailoring complete")
 	} else {
-		// User disabled AI tailoring: use the raw resume as-is, no cover letter.
 		tailoredText = resume.RawText
 		log.Info().Msg("AI tailoring disabled by user; using raw resume")
 	}
@@ -194,31 +200,24 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		log.Warn().Err(err).Msg("failed to record ai_completed event")
 	}
 
-	// ── Enqueue Stage 2 ───────────────────────────────────────────────────────
-	browserTask, err := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
-		ApplicationID: p.ApplicationID,
-		UserID:        p.UserID,
-		JobID:         p.JobID,
-	})
-	if err != nil {
-		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("build browser_apply task: %v", err))
+	// ── Insert Stage 2 job (NOTIFY wakes browser worker immediately) ──────────
+	// riverClient may be nil in unit tests that only exercise Stage 1 logic.
+	if w.riverClient != nil {
+		if _, err := w.riverClient.Insert(ctx, tasks.BrowserApplyArgs{
+			ApplicationID: p.ApplicationID,
+			UserID:        p.UserID,
+			JobID:         p.JobID,
+		}, nil); err != nil {
+			return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("insert browser_apply job: %v", err))
+		}
 	}
 
-	if _, err := w.asynqClient.EnqueueContext(ctx, browserTask); err != nil {
-		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("enqueue browser_apply: %v", err))
-	}
-
-	log.Info().Msg("Stage 1: AI prep complete; Stage 2 enqueued")
+	log.Info().Msg("Stage 1: AI prep complete; Stage 2 job inserted")
 	return nil
 }
 
 // sendFailureWebhook fires an EventApplicationFailed webhook for the user.
-// Errors are silently ignored — the prep failure itself is already logged.
-func (w *AIPrepWorker) sendFailureWebhook(
-	ctx context.Context,
-	userID uuid.UUID,
-	jobTitle, company, errMsg string,
-) {
+func (w *AIPrepWorker) sendFailureWebhook(ctx context.Context, userID uuid.UUID, jobTitle, company, errMsg string) {
 	if w.webhookSvc == nil {
 		return
 	}

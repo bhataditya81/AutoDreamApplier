@@ -10,7 +10,9 @@ import (
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/bhata/AutoDreamApplier/internal/auth"
 	"github.com/bhata/AutoDreamApplier/internal/browser"
@@ -59,7 +61,12 @@ func init() {
 		log.Fatal().Err(err).Msg("failed to connect to Redis")
 	}
 
-	asynqClient := asynq.NewClient(cfg.Redis.AsynqOpt())
+	// River client — insert-only (no workers run inside Lambda).
+	// Job insertion triggers PostgreSQL LISTEN/NOTIFY; zero Redis operations.
+	riverClient, err := river.NewClient[pgx.Tx](riverpgxv5.New(dbPool), &river.Config{})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create River client")
+	}
 
 	s3Client, err := s3.New(ctx, cfg.S3, cfg.AWS, log)
 	if err != nil {
@@ -96,7 +103,7 @@ func init() {
 	// It runs as its own Lambda (deployments/lambda/followup-scheduler) triggered
 	// by EventBridge every hour.
 
-	appService := appsvc.New(appRepo, asynqClient, browserClient, notifClient, log)
+	appService := appsvc.New(appRepo, riverClient, browserClient, notifClient, log)
 	matchService := matchsvc.New(dbPool, mRepo, log)
 
 	userHandler := handlers.NewUserHandler(userRepo, s3Client, cfg.S3.BucketResumes, log).

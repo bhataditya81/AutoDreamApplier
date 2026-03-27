@@ -32,8 +32,8 @@ func TestService_Submit_HappyPath(t *testing.T) {
 	ctx := context.Background()
 	f := seedFixtures(t, ctx, pool)
 
-	asynqClient := newTestAsynqClient(t) // skips if Redis unreachable
-	svc := newTestService(pool, asynqClient)
+	rc := newTestRiverClient(t, pool) // skips if River migration unavailable
+	svc := newTestService(pool, rc)
 
 	app, err := svc.Submit(ctx, f.userID, f.jobID, f.matchID)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestService_Submit_NoPrimaryResume_ReturnsNotFound(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
 
-	asynqClient := newTestAsynqClient(t) // skips if Redis unreachable
+	rc := newTestRiverClient(t, pool) // skips if River migration unavailable
 
 	// User with no resume at all.
 	userID := uuid.New()
@@ -109,7 +109,7 @@ func TestService_Submit_NoPrimaryResume_ReturnsNotFound(t *testing.T) {
 		t.Fatalf("insert match: %v", err)
 	}
 
-	svc := newTestService(pool, asynqClient)
+	svc := newTestService(pool, rc)
 
 	_, err = svc.Submit(ctx, userID, jobID, matchID)
 	if !errors.Is(err, service.ErrNotFound) {
@@ -124,7 +124,7 @@ func TestService_Submit_RepoCreateError(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
 
-	asynqClient := newTestAsynqClient(t) // skips if Redis unreachable
+	rc := newTestRiverClient(t, pool) // skips if River migration unavailable
 
 	// Seed just a user + resume — but no job row, so the FK on applications.job_id
 	// will fire and repo.Create will return an error.
@@ -160,7 +160,7 @@ func TestService_Submit_RepoCreateError(t *testing.T) {
 	nonExistentJobID := uuid.New()
 	nonExistentMatchID := uuid.New()
 
-	svc := newTestService(pool, asynqClient)
+	svc := newTestService(pool, rc)
 
 	_, err = svc.Submit(ctx, userID, nonExistentJobID, nonExistentMatchID)
 	if err == nil {

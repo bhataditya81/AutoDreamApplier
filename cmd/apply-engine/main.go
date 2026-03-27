@@ -12,7 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 
 	aimodels "github.com/bhata/AutoDreamApplier/internal/ai"
 	"github.com/bhata/AutoDreamApplier/internal/application/handler"
@@ -58,6 +61,18 @@ func main() {
 	}
 	defer database.Close(pool)
 
+	// ── River migrations ──────────────────────────────────────────────────────
+	// Ensure River's internal job-queue tables exist before starting workers.
+	// This is idempotent — safe to run on every startup.
+	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create River migrator")
+	}
+	if _, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil); err != nil {
+		log.Fatal().Err(err).Msg("River migration failed")
+	}
+	log.Info().Msg("River migrations applied")
+
 	// ── S3 ────────────────────────────────────────────────────────────────────
 	s3Client, err := pkgs3.New(ctx, cfg.S3, cfg.AWS, log)
 	if err != nil {
@@ -87,14 +102,14 @@ func main() {
 	// AI provider: selected via AI_PROVIDER env var ("python", "anthropic", "gemini", "openai").
 	// Defaults to "python" (the Python FastAPI AI service) when unset.
 	aiClient, err := aimodels.NewProvider(aimodels.ProviderConfig{
-		Provider:     cfg.AI.Provider,
-		ServiceURL:   cfg.AI.ServiceURL,
-		AnthropicKey: cfg.AI.AnthropicKey,
+		Provider:       cfg.AI.Provider,
+		ServiceURL:     cfg.AI.ServiceURL,
+		AnthropicKey:   cfg.AI.AnthropicKey,
 		AnthropicModel: cfg.AI.LLMModel,
-		GeminiAPIKey: cfg.AI.GeminiAPIKey,
-		GeminiModel:  cfg.AI.GeminiModel,
-		OpenAIAPIKey: cfg.AI.OpenAIAPIKey,
-		OpenAIModel:  cfg.AI.OpenAIModel,
+		GeminiAPIKey:   cfg.AI.GeminiAPIKey,
+		GeminiModel:    cfg.AI.GeminiModel,
+		OpenAIAPIKey:   cfg.AI.OpenAIAPIKey,
+		OpenAIModel:    cfg.AI.OpenAIModel,
 	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to initialise AI provider")
@@ -103,15 +118,6 @@ func main() {
 
 	// Browser pool microservice: EC2 Spot nodes running Playwright via HTTP API.
 	browserClient := browser.New(cfg.Browser.PoolURL, log)
-
-	// ── Redis / Asynq ─────────────────────────────────────────────────────────
-	// redisOpt is shared between the Asynq producer (client) and consumer (server)
-	// so both always connect to the same Redis instance.
-	// AsynqOpt() automatically enables TLS for rediss:// URLs (e.g. Upstash).
-	redisOpt := cfg.Redis.AsynqOpt()
-
-	asynqClient := asynq.NewClient(redisOpt)
-	defer asynqClient.Close()
 
 	// ── Repository ────────────────────────────────────────────────────────────
 	repo := repository.New(pool, log)
@@ -144,23 +150,61 @@ func main() {
 	// configured any webhook URLs in their preferences.
 	webhookSvc := notification.NewWebhookService(log)
 
-	// ── Task workers ──────────────────────────────────────────────────────────
+	// ── River workers ─────────────────────────────────────────────────────────
+	// Workers are registered before the client is created so River can validate
+	// that every enqueued job kind has a registered handler.
+	workerRegistry := river.NewWorkers()
+
 	aiPrepWorker := workers.NewAIPrepWorker(
-		repo, aiClient, s3Client, asynqClient, buckets, log,
+		repo, aiClient, s3Client, nil /* riverClient set below */, buckets, log,
 	).WithWebhookService(webhookSvc)
 	browserApplyWorker := workers.NewBrowserApplyWorker(
 		repo, browserClient, s3Client, buckets, atsRegistry, notifier, log,
 	).WithWebhookService(webhookSvc, cfg.SES.DashboardURL)
 
+	river.AddWorker(workerRegistry, aiPrepWorker)
+	river.AddWorker(workerRegistry, browserApplyWorker)
+
+	// ── River client ──────────────────────────────────────────────────────────
+	// Concurrency is sized to the browser pool.
+	// Stage 1 (AI prep) workers get more slots than Stage 2 (browser-bound).
+	//
+	// FetchPollInterval is set to 24 h — River uses PostgreSQL LISTEN/NOTIFY
+	// for push-based wakeup, so the fallback poll almost never fires.
+	// This eliminates all idle database polling.
+	concurrency := cfg.Browser.PoolSize
+	if concurrency <= 0 {
+		concurrency = 10
+	}
+	if cfg.App.Env != "production" {
+		concurrency = 1 // single worker slot is enough for staging
+	}
+
+	riverClient, err := river.NewClient[pgx.Tx](riverpgxv5.New(pool), &river.Config{
+		Workers: workerRegistry,
+		Queues: map[string]river.QueueConfig{
+			tasks.QueueAIPrep:       {MaxWorkers: concurrency * 6 / 10},
+			tasks.QueueBrowserApply: {MaxWorkers: concurrency * 3 / 10},
+		},
+		// Fallback poll interval — LISTEN/NOTIFY wakes workers instantly.
+		// Set high to eliminate background database polling.
+		FetchPollInterval: 24 * time.Hour,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create River client")
+	}
+
+	// Inject the River client into aiPrepWorker so it can enqueue Stage 2 jobs.
+	aiPrepWorker.SetRiverClient(riverClient)
+
 	// ── Service & HTTP handler ────────────────────────────────────────────────
-	svc := service.New(repo, asynqClient, browserClient, notifier, log)
+	svc := service.New(repo, riverClient, browserClient, notifier, log)
 
 	// ── Auto-apply scheduler ──────────────────────────────────────────────────
 	sched := scheduler.New(repo, mRepo, svc, log)
 
 	// ── Weekly digest scheduler ───────────────────────────────────────────────
 	// Sends a summary email to every active user on Mondays at 09:00 UTC.
-	// The notifier is nil-safe; in local dev (SES not configured) this is a no-op.
 	digestSched := scheduler.NewDigestScheduler(repo, notifier, log)
 
 	// ── HTTP router ───────────────────────────────────────────────────────────
@@ -188,38 +232,11 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 120 * time.Second, // allow long-running apply responses
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// ── Asynq task server ─────────────────────────────────────────────────────
-	// Concurrency is sized to the browser pool: Stage 2 tasks are the bottleneck
-	// (one Playwright session each). Stage 1 (AI prep) tasks are CPU/network-bound
-	// and can share the remaining worker slots.
-	concurrency := cfg.Browser.PoolSize
-	if concurrency <= 0 {
-		concurrency = 10 // sensible default when not configured
-	}
-
-	asynqSrv := asynq.NewServer(
-		redisOpt,
-		asynq.Config{
-			Concurrency: concurrency,
-			Queues: map[string]int{
-				tasks.QueueAIPrep:       6, // Stage 1: higher scheduling weight
-				tasks.QueueBrowserApply: 3, // Stage 2: lower concurrency (browser-bound)
-				tasks.QueueDefault:      1,
-			},
-		},
-	)
-
-	mux := asynq.NewServeMux()
-	mux.HandleFunc(tasks.TypeAIPrep, aiPrepWorker.ProcessTask)
-	mux.HandleFunc(tasks.TypeBrowserApply, browserApplyWorker.ProcessTask)
-
 	// ── Start servers and scheduler concurrently ─────────────────────────────
-	// errCh receives fatal startup/runtime errors from either server so the
-	// main goroutine can initiate a clean shutdown.
 	errCh := make(chan error, 2)
 
 	go func() {
@@ -230,16 +247,16 @@ func main() {
 	}()
 
 	go func() {
-		log.Info().Msg("Asynq task server starting")
-		if err := asynqSrv.Run(mux); err != nil {
-			errCh <- fmt.Errorf("Asynq server: %w", err)
+		log.Info().Msg("River worker starting")
+		if err := riverClient.Start(ctx); err != nil {
+			errCh <- fmt.Errorf("River worker: %w", err)
 		}
 	}()
 
-	// Auto-apply scheduler: runs until ctx is cancelled (clean shutdown below).
+	// Auto-apply scheduler: runs until ctx is cancelled.
 	go sched.Run(ctx)
 
-	// Weekly digest scheduler: same lifecycle as the auto-apply scheduler.
+	// Weekly digest scheduler: same lifecycle.
 	go digestSched.Run(ctx)
 
 	// ── Graceful shutdown ─────────────────────────────────────────────────────
@@ -255,17 +272,18 @@ func main() {
 
 	log.Info().Msg("shutting down Application Engine...")
 
-	// Signal the scheduler to stop before closing connections.
+	// Signal the schedulers to stop.
 	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer shutdownCancel()
 
-	// Stop the Asynq server first so no new tasks are picked up while
-	// in-flight tasks are allowed to finish (up to their own deadlines).
-	asynqSrv.Shutdown()
+	// Stop River: waits for in-flight jobs to finish (up to shutdownCtx deadline).
+	if err := riverClient.Stop(shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("River worker forced shutdown")
+	}
 
-	// Drain HTTP connections before closing the database pool.
+	// Drain HTTP connections.
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("HTTP server forced shutdown")
 	}

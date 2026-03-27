@@ -1,4 +1,4 @@
-// Package workers contains Asynq task handlers for the 2-stage apply pipeline.
+// Package workers contains River job workers for the 2-stage apply pipeline.
 package workers
 
 import (
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
+	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
@@ -20,24 +20,25 @@ import (
 	pkgs3 "github.com/bhata/AutoDreamApplier/pkg/s3"
 )
 
-// BrowserApplyWorker is the Stage 2 Asynq handler.
+// BrowserApplyWorker is the Stage 2 River worker.
 // It loads AI-prepared content from S3, fetches job/user details, then
 // delegates form filling + submission to the browser pool microservice.
 // S3Buckets is declared in ai_prep_worker.go (same package); do not redefine.
 type BrowserApplyWorker struct {
-	appRepo       *repository.ApplicationRepository
+	river.WorkerDefaults[tasks.BrowserApplyArgs]
+
+	appRepo      *repository.ApplicationRepository
 	browserClient *browser.Client
-	s3Client      *pkgs3.Client
-	buckets       S3Buckets
-	atsRegistry   *ats.Registry           // guards against unsupported ATS types before browser call
-	notifier      *notification.Client    // nil-safe; no-ops when SES is unconfigured
-	webhookSvc    *notification.WebhookService // nil-safe; no-ops when not configured
-	dashboardURL  string
-	log           zerolog.Logger
+	s3Client     *pkgs3.Client
+	buckets      S3Buckets
+	atsRegistry  *ats.Registry
+	notifier     *notification.Client
+	webhookSvc   *notification.WebhookService
+	dashboardURL string
+	log          zerolog.Logger
 }
 
 // NewBrowserApplyWorker constructs a BrowserApplyWorker.
-// notifier may be nil — notification calls become no-ops.
 func NewBrowserApplyWorker(
 	appRepo *repository.ApplicationRepository,
 	browserClient *browser.Client,
@@ -58,17 +59,14 @@ func NewBrowserApplyWorker(
 	}
 }
 
-// WithWebhookService attaches a WebhookService and dashboard base URL for
-// firing Slack/Discord notifications on application outcomes.
-// webhookSvc may be nil — all webhook calls become no-ops.
+// WithWebhookService attaches a WebhookService and dashboard base URL.
 func (w *BrowserApplyWorker) WithWebhookService(ws *notification.WebhookService, dashboardURL string) *BrowserApplyWorker {
 	w.webhookSvc = ws
 	w.dashboardURL = dashboardURL
 	return w
 }
 
-// toWebhookEvents converts a slice of raw event strings (stored in user
-// preferences) into typed notification.WebhookEvent values.
+// toWebhookEvents converts raw event strings to typed WebhookEvent values.
 func toWebhookEvents(events []string) []notification.WebhookEvent {
 	out := make([]notification.WebhookEvent, 0, len(events))
 	for _, e := range events {
@@ -77,12 +75,9 @@ func toWebhookEvents(events []string) []notification.WebhookEvent {
 	return out
 }
 
-// ProcessTask implements asynq.HandlerFunc for TypeBrowserApply tasks.
-func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
-	var p tasks.BrowserApplyPayload
-	if err := json.Unmarshal(t.Payload(), &p); err != nil {
-		return fmt.Errorf("unmarshal browser_apply payload: %w", err)
-	}
+// Work implements river.Worker for BrowserApplyArgs (Stage 2).
+func (w *BrowserApplyWorker) Work(ctx context.Context, job *river.Job[tasks.BrowserApplyArgs]) error {
+	p := job.Args
 
 	log := w.log.With().
 		Str("app_id", p.ApplicationID.String()).
@@ -100,40 +95,35 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 		log.Warn().Err(err).Msg("failed to record browser_started event")
 	}
 
-	// ── Load application (S3 keys + pre-answered questions) ───────────────────
+	// ── Load application ───────────────────────────────────────────────────────
 	app, err := w.appRepo.GetByID(ctx, p.ApplicationID, p.UserID)
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("get application: %v", err))
 	}
-
 	if app.TailoredResumeS3 == "" || app.CoverLetterS3 == "" {
 		return w.failApp(ctx, p.ApplicationID,
 			"AI prep output missing: tailored resume or cover letter S3 key is empty")
 	}
 
 	// ── Load job & user ────────────────────────────────────────────────────────
-	job, err := w.appRepo.GetJob(ctx, p.JobID)
+	job2, err := w.appRepo.GetJob(ctx, p.JobID)
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("get job: %v", err))
 	}
 
 	// ── Resolve ATS plugin ─────────────────────────────────────────────────────
-	// Prefer the pre-classified ats_type stored on the job. When the discovery
-	// service set it to "unknown" (or it is missing), fall back to URL-pattern
-	// detection so jobs discovered before a plugin was registered can still be
-	// applied to.
-	resolvedATSType := string(job.ATSType)
+	resolvedATSType := string(job2.ATSType)
 	if _, pluginErr := w.atsRegistry.Get(resolvedATSType); pluginErr != nil {
-		if detected, ok := w.atsRegistry.DetectATS(job.ApplyURL); ok {
+		if detected, ok := w.atsRegistry.DetectATS(job2.ApplyURL); ok {
 			resolvedATSType = detected.Name()
 			log.Info().
-				Str("original_ats_type", string(job.ATSType)).
+				Str("original_ats_type", string(job2.ATSType)).
 				Str("detected_ats_type", resolvedATSType).
 				Msg("ATS type resolved via URL auto-detection")
 		} else {
 			return w.failApp(ctx, p.ApplicationID,
 				fmt.Sprintf("unsupported ATS type %q and URL auto-detection found no matching plugin for %s",
-					job.ATSType, job.ApplyURL))
+					job2.ATSType, job2.ApplyURL))
 		}
 	}
 
@@ -142,12 +132,11 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("get user: %v", err))
 	}
 
-	// ── Fetch AI-prepared content from S3 (both keys live in Resumes bucket) ──
+	// ── Fetch AI-prepared content from S3 ─────────────────────────────────────
 	resumeText, err := w.s3Client.GetText(ctx, w.buckets.Resumes, app.TailoredResumeS3)
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("fetch tailored resume from S3: %v", err))
 	}
-
 	coverText, err := w.s3Client.GetText(ctx, w.buckets.Resumes, app.CoverLetterS3)
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("fetch cover letter from S3: %v", err))
@@ -158,23 +147,22 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 	if len(app.FormAnswersJSON) > 0 {
 		if err := json.Unmarshal(app.FormAnswersJSON, &formAnswers); err != nil {
 			log.Warn().Err(err).Msg("failed to deserialize form answers; proceeding with empty map")
-			formAnswers = make(map[string]string)
 		}
 	}
 
 	// ── Delegate to browser pool ───────────────────────────────────────────────
 	log.Info().
-		Str("apply_url", job.ApplyURL).
+		Str("apply_url", job2.ApplyURL).
 		Str("ats_type", resolvedATSType).
 		Msg("delegating to browser pool")
 
 	applyResp, err := w.browserClient.Apply(ctx, &browser.ApplyRequest{
 		ApplicationID:   p.ApplicationID.String(),
-		ApplyURL:        job.ApplyURL,
+		ApplyURL:        job2.ApplyURL,
 		ATSType:         resolvedATSType,
 		FullName:        user.FullName,
 		Email:           user.Email,
-		Phone:           "", // not stored in users table; provided by browser pool profile if needed
+		Phone:           "",
 		LinkedIn:        "",
 		Website:         "",
 		ResumeText:      resumeText,
@@ -183,29 +171,25 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 	})
 	if err != nil {
 		errMsg := fmt.Sprintf("browser apply HTTP call: %v", err)
-		w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+		w.sendFailureWebhook(ctx, p.UserID, job2.Title, job2.Company, errMsg)
 		return w.failApp(ctx, p.ApplicationID, errMsg)
 	}
-
 	if !applyResp.Success {
 		errMsg := fmt.Sprintf("browser apply failed: %s", applyResp.ErrorMessage)
-		w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+		w.sendFailureWebhook(ctx, p.UserID, job2.Title, job2.Company, errMsg)
 		return w.failApp(ctx, p.ApplicationID, errMsg)
 	}
 
 	// ── Persist screenshot + mark applied ─────────────────────────────────────
 	if applyResp.ScreenshotKey != "" {
 		if err := w.appRepo.UpdateScreenshot(ctx, p.ApplicationID, applyResp.ScreenshotKey); err != nil {
-			log.Warn().Err(err).
-				Str("screenshot_key", applyResp.ScreenshotKey).
+			log.Warn().Err(err).Str("screenshot_key", applyResp.ScreenshotKey).
 				Msg("failed to persist screenshot key")
 		}
 	}
-
 	if err := w.appRepo.SetAppliedAt(ctx, p.ApplicationID, time.Now().UTC()); err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("set applied_at: %v", err))
 	}
-
 	if err := w.appRepo.RecordEvent(ctx, p.ApplicationID, models.EventSubmitted, map[string]any{
 		"screenshot_key":  applyResp.ScreenshotKey,
 		"steps_completed": applyResp.StepsCompleted,
@@ -218,10 +202,8 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 		Int("steps", len(applyResp.StepsCompleted)).
 		Msg("Stage 2: browser apply complete")
 
-	// ── Notify user of successful application (non-fatal) ─────────────────────
-	w.sendSubmittedNotification(ctx, p.ApplicationID, user.Email, user.FullName, job.Title, job.Company)
+	w.sendSubmittedNotification(ctx, p.ApplicationID, user.Email, user.FullName, job2.Title, job2.Company)
 
-	// ── Webhook: application submitted ────────────────────────────────────────
 	if w.webhookSvc != nil {
 		prefs, err := w.appRepo.GetPreferences(ctx, p.UserID)
 		if err == nil && prefs != nil {
@@ -231,8 +213,8 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 				Events:     toWebhookEvents(prefs.WebhookEvents),
 			}
 			w.webhookSvc.Send(ctx, cfg, notification.EventApplicationSubmitted, map[string]string{
-				"title":         job.Title,
-				"company":       job.Company,
+				"title":         job2.Title,
+				"company":       job2.Company,
 				"dashboard_url": w.dashboardURL + "/dashboard/applications/" + p.ApplicationID.String(),
 			})
 		}
@@ -241,32 +223,18 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 	return nil
 }
 
-// sendSubmittedNotification emails the user that their application was submitted.
-// Errors are logged but never propagated — the apply already succeeded.
-func (w *BrowserApplyWorker) sendSubmittedNotification(
-	ctx context.Context,
-	appID uuid.UUID,
-	email, fullName, jobTitle, company string,
-) {
+func (w *BrowserApplyWorker) sendSubmittedNotification(ctx context.Context, appID uuid.UUID, email, fullName, jobTitle, company string) {
 	if err := w.notifier.SendApplicationSubmitted(ctx, email, notification.ApplicationSubmittedData{
 		UserName:      fullName,
 		JobTitle:      jobTitle,
 		Company:       company,
 		ApplicationID: appID.String(),
 	}); err != nil {
-		w.log.Warn().Err(err).
-			Str("app_id", appID.String()).
-			Msg("submitted notify: SES send failed (non-fatal)")
+		w.log.Warn().Err(err).Str("app_id", appID.String()).Msg("submitted notify: SES send failed (non-fatal)")
 	}
 }
 
-// sendFailureWebhook fires an EventApplicationFailed webhook for the user.
-// Errors are silently ignored — the apply failure itself is already logged.
-func (w *BrowserApplyWorker) sendFailureWebhook(
-	ctx context.Context,
-	userID uuid.UUID,
-	jobTitle, company, errMsg string,
-) {
+func (w *BrowserApplyWorker) sendFailureWebhook(ctx context.Context, userID uuid.UUID, jobTitle, company, errMsg string) {
 	if w.webhookSvc == nil {
 		return
 	}
@@ -286,7 +254,6 @@ func (w *BrowserApplyWorker) sendFailureWebhook(
 	})
 }
 
-// failApp records an error on the application and returns the wrapped error.
 func (w *BrowserApplyWorker) failApp(ctx context.Context, appID uuid.UUID, msg string) error {
 	if err := w.appRepo.SetError(ctx, appID, msg); err != nil {
 		w.log.Error().Err(err).Str("app_id", appID.String()).Msg("failed to record application error")

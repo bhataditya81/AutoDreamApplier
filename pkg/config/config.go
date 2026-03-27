@@ -1,15 +1,12 @@
 package config
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/hibiken/asynq"
 )
 
 // Config holds all application configuration.
@@ -65,20 +62,6 @@ func (c RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", c.Host, c.Port)
 }
 
-// AsynqOpt returns an Asynq RedisClientOpt with TLS enabled when required.
-// Use this instead of constructing asynq.RedisClientOpt inline so TLS is
-// always consistent with the REDIS_URL scheme (rediss:// → TLS).
-func (c RedisConfig) AsynqOpt() asynq.RedisClientOpt {
-	opt := asynq.RedisClientOpt{
-		Addr:     c.Addr(),
-		Password: c.Password,
-		DB:       c.DB,
-	}
-	if c.TLS {
-		opt.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	}
-	return opt
-}
 
 type AWSConfig struct {
 	Region          string

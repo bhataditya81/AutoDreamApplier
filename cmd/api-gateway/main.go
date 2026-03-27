@@ -11,7 +11,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/bhata/AutoDreamApplier/internal/auth"
 	"github.com/bhata/AutoDreamApplier/internal/browser"
@@ -72,10 +74,13 @@ func main() {
 	}
 	defer pkgredis.Close(redisClient)
 
-	// Initialize Asynq client (task queue backed by Redis)
-	// AsynqOpt() automatically enables TLS for rediss:// URLs (e.g. Upstash).
-	asynqClient := asynq.NewClient(cfg.Redis.AsynqOpt())
-	defer asynqClient.Close()
+	// River client — insert-only (no workers here).
+	// Jobs are picked up by the apply-engine service.
+	// Inserting a job triggers PostgreSQL LISTEN/NOTIFY; zero Redis operations.
+	riverClient, err := river.NewClient[pgx.Tx](riverpgxv5.New(dbPool), &river.Config{})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create River client")
+	}
 
 	// Initialize S3
 	s3Client, err := s3.New(ctx, cfg.S3, cfg.AWS, log)
@@ -119,7 +124,7 @@ func main() {
 	go followUpScheduler.Run(ctx)
 
 	// ── Services ──────────────────────────────────────────────────────────────
-	appService := appsvc.New(appRepo, asynqClient, browserClient, notifClient, log)
+	appService := appsvc.New(appRepo, riverClient, browserClient, notifClient, log)
 	matchService := matchsvc.New(dbPool, mRepo, log)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────

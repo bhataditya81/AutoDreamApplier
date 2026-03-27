@@ -1,32 +1,38 @@
 package tasks_test
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/riverqueue/river"
 
 	"github.com/bhata/AutoDreamApplier/internal/application/tasks"
 )
 
-// ── Type constant tests ───────────────────────────────────────────────────────
+// ── Kind constant tests ───────────────────────────────────────────────────────
 
-func TestTypeConstants_NonEmpty(t *testing.T) {
+func TestAIPrepArgs_Kind(t *testing.T) {
 	t.Parallel()
-
-	if tasks.TypeAIPrep == "" {
-		t.Error("TypeAIPrep must not be empty")
-	}
-	if tasks.TypeBrowserApply == "" {
-		t.Error("TypeBrowserApply must not be empty")
+	a := tasks.AIPrepArgs{}
+	if a.Kind() == "" {
+		t.Error("AIPrepArgs.Kind() must not be empty")
 	}
 }
 
-func TestTypeConstants_Distinct(t *testing.T) {
+func TestBrowserApplyArgs_Kind(t *testing.T) {
 	t.Parallel()
+	a := tasks.BrowserApplyArgs{}
+	if a.Kind() == "" {
+		t.Error("BrowserApplyArgs.Kind() must not be empty")
+	}
+}
 
-	if tasks.TypeAIPrep == tasks.TypeBrowserApply {
-		t.Errorf("TypeAIPrep and TypeBrowserApply must be distinct; both are %q", tasks.TypeAIPrep)
+func TestKinds_Distinct(t *testing.T) {
+	t.Parallel()
+	ai := tasks.AIPrepArgs{}.Kind()
+	br := tasks.BrowserApplyArgs{}.Kind()
+	if ai == br {
+		t.Errorf("AIPrepArgs and BrowserApplyArgs must have distinct Kind values; both are %q", ai)
 	}
 }
 
@@ -38,7 +44,6 @@ func TestQueueConstants_NonEmptyAndDistinct(t *testing.T) {
 	queues := map[string]string{
 		"QueueAIPrep":       tasks.QueueAIPrep,
 		"QueueBrowserApply": tasks.QueueBrowserApply,
-		"QueueDefault":      tasks.QueueDefault,
 	}
 
 	for name, q := range queues {
@@ -47,8 +52,7 @@ func TestQueueConstants_NonEmptyAndDistinct(t *testing.T) {
 		}
 	}
 
-	// All three must be distinct.
-	seen := make(map[string]string) // value → name
+	seen := make(map[string]string)
 	for name, q := range queues {
 		if prev, ok := seen[q]; ok {
 			t.Errorf("queue values must be distinct: %s and %s both equal %q", prev, name, q)
@@ -57,107 +61,91 @@ func TestQueueConstants_NonEmptyAndDistinct(t *testing.T) {
 	}
 }
 
-// ── NewAIPrep tests ───────────────────────────────────────────────────────────
+// ── InsertOpts tests ──────────────────────────────────────────────────────────
 
-func TestNewAIPrep_SetsCorrectType(t *testing.T) {
+func TestAIPrepArgs_InsertOpts_Queue(t *testing.T) {
 	t.Parallel()
-
-	p := tasks.AIPrepPayload{
-		ApplicationID: uuid.New(),
-		UserID:        uuid.New(),
-		JobID:         uuid.New(),
-		ResumeID:      uuid.New(),
+	opts := tasks.AIPrepArgs{}.InsertOpts()
+	if opts.Queue != tasks.QueueAIPrep {
+		t.Errorf("AIPrepArgs InsertOpts queue = %q; want %q", opts.Queue, tasks.QueueAIPrep)
 	}
-
-	task, err := tasks.NewAIPrep(p)
-	if err != nil {
-		t.Fatalf("NewAIPrep: unexpected error: %v", err)
-	}
-	if task.Type() != tasks.TypeAIPrep {
-		t.Errorf("task.Type() = %q; want %q", task.Type(), tasks.TypeAIPrep)
+	if opts.Priority < 1 {
+		t.Errorf("AIPrepArgs InsertOpts priority = %d; want >= 1", opts.Priority)
 	}
 }
 
-func TestNewAIPrep_PayloadRoundTrip(t *testing.T) {
+func TestBrowserApplyArgs_InsertOpts_Queue(t *testing.T) {
 	t.Parallel()
-
-	want := tasks.AIPrepPayload{
-		ApplicationID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
-		UserID:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
-		JobID:         uuid.MustParse("33333333-3333-3333-3333-333333333333"),
-		ResumeID:      uuid.MustParse("44444444-4444-4444-4444-444444444444"),
+	opts := tasks.BrowserApplyArgs{}.InsertOpts()
+	if opts.Queue != tasks.QueueBrowserApply {
+		t.Errorf("BrowserApplyArgs InsertOpts queue = %q; want %q", opts.Queue, tasks.QueueBrowserApply)
 	}
-
-	task, err := tasks.NewAIPrep(want)
-	if err != nil {
-		t.Fatalf("NewAIPrep: unexpected error: %v", err)
-	}
-
-	var got tasks.AIPrepPayload
-	if err := json.Unmarshal(task.Payload(), &got); err != nil {
-		t.Fatalf("json.Unmarshal payload: %v", err)
-	}
-
-	if got.ApplicationID != want.ApplicationID {
-		t.Errorf("ApplicationID: got %s; want %s", got.ApplicationID, want.ApplicationID)
-	}
-	if got.UserID != want.UserID {
-		t.Errorf("UserID: got %s; want %s", got.UserID, want.UserID)
-	}
-	if got.JobID != want.JobID {
-		t.Errorf("JobID: got %s; want %s", got.JobID, want.JobID)
-	}
-	if got.ResumeID != want.ResumeID {
-		t.Errorf("ResumeID: got %s; want %s", got.ResumeID, want.ResumeID)
+	if opts.Priority < 1 {
+		t.Errorf("BrowserApplyArgs InsertOpts priority = %d; want >= 1", opts.Priority)
 	}
 }
 
-// ── NewBrowserApply tests ─────────────────────────────────────────────────────
+// ── JobArgs interface compliance ──────────────────────────────────────────────
 
-func TestNewBrowserApply_SetsCorrectType(t *testing.T) {
+func TestAIPrepArgs_ImplementsJobArgs(t *testing.T) {
 	t.Parallel()
+	var _ river.JobArgs = tasks.AIPrepArgs{}
+}
 
-	p := tasks.BrowserApplyPayload{
-		ApplicationID: uuid.New(),
-		UserID:        uuid.New(),
-		JobID:         uuid.New(),
+func TestBrowserApplyArgs_ImplementsJobArgs(t *testing.T) {
+	t.Parallel()
+	var _ river.JobArgs = tasks.BrowserApplyArgs{}
+}
+
+// ── Field round-trip tests ────────────────────────────────────────────────────
+
+func TestAIPrepArgs_Fields(t *testing.T) {
+	t.Parallel()
+	appID := uuid.New()
+	userID := uuid.New()
+	jobID := uuid.New()
+	resumeID := uuid.New()
+
+	a := tasks.AIPrepArgs{
+		ApplicationID: appID,
+		UserID:        userID,
+		JobID:         jobID,
+		ResumeID:      resumeID,
 	}
 
-	task, err := tasks.NewBrowserApply(p)
-	if err != nil {
-		t.Fatalf("NewBrowserApply: unexpected error: %v", err)
+	if a.ApplicationID != appID {
+		t.Errorf("ApplicationID mismatch")
 	}
-	if task.Type() != tasks.TypeBrowserApply {
-		t.Errorf("task.Type() = %q; want %q", task.Type(), tasks.TypeBrowserApply)
+	if a.UserID != userID {
+		t.Errorf("UserID mismatch")
+	}
+	if a.JobID != jobID {
+		t.Errorf("JobID mismatch")
+	}
+	if a.ResumeID != resumeID {
+		t.Errorf("ResumeID mismatch")
 	}
 }
 
-func TestNewBrowserApply_PayloadRoundTrip(t *testing.T) {
+func TestBrowserApplyArgs_Fields(t *testing.T) {
 	t.Parallel()
+	appID := uuid.New()
+	userID := uuid.New()
+	jobID := uuid.New()
 
-	want := tasks.BrowserApplyPayload{
-		ApplicationID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-		UserID:        uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-		JobID:         uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-	}
-
-	task, err := tasks.NewBrowserApply(want)
-	if err != nil {
-		t.Fatalf("NewBrowserApply: unexpected error: %v", err)
+	a := tasks.BrowserApplyArgs{
+		ApplicationID: appID,
+		UserID:        userID,
+		JobID:         jobID,
 	}
 
-	var got tasks.BrowserApplyPayload
-	if err := json.Unmarshal(task.Payload(), &got); err != nil {
-		t.Fatalf("json.Unmarshal payload: %v", err)
+	if a.ApplicationID != appID {
+		t.Errorf("ApplicationID mismatch")
 	}
-
-	if got.ApplicationID != want.ApplicationID {
-		t.Errorf("ApplicationID: got %s; want %s", got.ApplicationID, want.ApplicationID)
+	if a.UserID != userID {
+		t.Errorf("UserID mismatch")
 	}
-	if got.UserID != want.UserID {
-		t.Errorf("UserID: got %s; want %s", got.UserID, want.UserID)
-	}
-	if got.JobID != want.JobID {
-		t.Errorf("JobID: got %s; want %s", got.JobID, want.JobID)
+	if a.JobID != jobID {
+		t.Errorf("JobID mismatch")
 	}
 }

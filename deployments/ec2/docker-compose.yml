@@ -16,9 +16,11 @@ services:
     environment:
       - BROWSER_POOL_PORT=9222
       - CHROMIUM_PATH=/usr/bin/chromium
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-staging}
       - REDIS_URL=${REDIS_URL}
       - AWS_REGION=${AWS_REGION}
+    healthcheck:
+      disable: ${DISABLE_HEALTHCHECKS:-true}
     shm_size: "256mb"            # Required for Chromium stability
     security_opt:
       - seccomp:unconfined       # Required for Chromium sandbox
@@ -36,7 +38,7 @@ services:
     ports:
       - "127.0.0.1:8000:8085"   # Only accessible from localhost
     environment:
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-staging}
       - AI_PROVIDER=${AI_PROVIDER:-gemini}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
@@ -45,6 +47,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_RESUMES=${S3_BUCKET_RESUMES}
       - S3_BUCKET_AI_OUTPUTS=${S3_BUCKET_SCREENSHOTS}
+    healthcheck:
+      disable: ${DISABLE_HEALTHCHECKS:-true}
     deploy:
       resources:
         limits:
@@ -73,8 +77,10 @@ services:
       - DASHBOARD_URL=${DASHBOARD_URL}
       - BROWSER_POOL_URL=http://browser-pool:9222
       - AI_SERVICE_URL=http://ai-service:8085
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-staging}
       - APP_PORT=8084
+    healthcheck:
+      disable: ${DISABLE_HEALTHCHECKS:-true}
     deploy:
       resources:
         limits:

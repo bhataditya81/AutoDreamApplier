@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	goredis "github.com/redis/go-redis/v9"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
 	"github.com/bhata/AutoDreamApplier/internal/application/repository"
@@ -27,8 +29,6 @@ type fixtures struct {
 }
 
 // seedFixtures inserts a user, primary resume, job, and match into the test DB.
-// Cleanups are registered in LIFO order so that the user row (which cascades
-// to applications, matches, and resumes) is deleted before the job row.
 func seedFixtures(t *testing.T, ctx context.Context, pool *pgxpool.Pool) fixtures {
 	t.Helper()
 
@@ -39,7 +39,7 @@ func seedFixtures(t *testing.T, ctx context.Context, pool *pgxpool.Pool) fixture
 		resumeID: uuid.New(),
 	}
 
-	// ── job (no FK deps) ──────────────────────────────────────────────────────
+	// ── job ───────────────────────────────────────────────────────────────────
 	_, err := pool.Exec(ctx, `
 		INSERT INTO jobs
 			(id, external_id, source_board, title, company, is_active, discovered_at, created_at, updated_at)
@@ -49,14 +49,11 @@ func seedFixtures(t *testing.T, ctx context.Context, pool *pgxpool.Pool) fixture
 	if err != nil {
 		t.Fatalf("seedFixtures: insert job: %v", err)
 	}
-	// job cleanup — runs SECOND (registered first, LIFO)
 	t.Cleanup(func() {
-		if _, delErr := pool.Exec(context.Background(), `DELETE FROM jobs WHERE id = $1`, f.jobID); delErr != nil {
-			t.Logf("seedFixtures cleanup: delete job %s: %v", f.jobID, delErr)
-		}
+		pool.Exec(context.Background(), `DELETE FROM jobs WHERE id = $1`, f.jobID) //nolint:errcheck
 	})
 
-	// ── user ─────────────────────────────────────────────────────────────────
+	// ── user ──────────────────────────────────────────────────────────────────
 	_, err = pool.Exec(ctx, `
 		INSERT INTO users
 			(id, cognito_sub, email, full_name, tier, apply_mode, auto_threshold, daily_limit, is_active, created_at, updated_at)
@@ -68,12 +65,8 @@ func seedFixtures(t *testing.T, ctx context.Context, pool *pgxpool.Pool) fixture
 	if err != nil {
 		t.Fatalf("seedFixtures: insert user: %v", err)
 	}
-	// user cleanup — runs FIRST (registered second, LIFO)
-	// Cascades to: resumes, matches, applications, application_events.
 	t.Cleanup(func() {
-		if _, delErr := pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, f.userID); delErr != nil {
-			t.Logf("seedFixtures cleanup: delete user %s: %v", f.userID, delErr)
-		}
+		pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, f.userID) //nolint:errcheck
 	})
 
 	// ── primary resume ────────────────────────────────────────────────────────
@@ -103,38 +96,33 @@ func seedFixtures(t *testing.T, ctx context.Context, pool *pgxpool.Pool) fixture
 }
 
 // newTestService builds a *service.Service backed by a real repository.
-// Pass a non-nil asynq.Client only for Submit tests; all other service methods
-// work with nil (the underlying repository paths don't touch the asynq client).
-func newTestService(pool *pgxpool.Pool, asynqClient *asynq.Client) *service.Service {
+// Pass a non-nil River client only for Submit tests; all other methods work
+// with nil since they don't touch the job queue.
+func newTestService(pool *pgxpool.Pool, rc *river.Client[pgx.Tx]) *service.Service {
 	repo := repository.New(pool, testhelper.NopLogger())
-	// browser.Client and notification.Client are passed as nil.
-	// notification.Client is nil-safe; browser.Client is only called by
-	// EmergencyStop, which is not exercised in these tests.
-	return service.New(repo, asynqClient, nil, nil, testhelper.NopLogger())
+	return service.New(repo, rc, nil, nil, testhelper.NopLogger())
 }
 
-// newTestAsynqClient creates an asynq.Client connected to the test Redis
-// instance. The test is skipped if Redis is not reachable.
-func newTestAsynqClient(t *testing.T) *asynq.Client {
+// newTestRiverClient creates a River client backed by the test PostgreSQL pool.
+// River migrations are applied idempotently so the job tables exist.
+// The test is skipped if River table creation fails unexpectedly.
+func newTestRiverClient(t *testing.T, pool *pgxpool.Pool) *river.Client[pgx.Tx] {
 	t.Helper()
-
-	addr := fmt.Sprintf("%s:%s",
-		testhelper.EnvOrDefault("REDIS_HOST", "localhost"),
-		testhelper.EnvOrDefault("REDIS_PORT", "6379"),
-	)
-
-	// Ping first via go-redis so we get a clean skip instead of a hang.
-	rdb := goredis.NewClient(&goredis.Options{Addr: addr})
-	defer rdb.Close()
-
 	ctx := context.Background()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		t.Skipf("REDIS not reachable at %s (%v); skipping Submit integration test", addr, err)
+
+	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		t.Skipf("newTestRiverClient: create migrator: %v", err)
+	}
+	if _, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil); err != nil {
+		t.Skipf("newTestRiverClient: migrate: %v", err)
 	}
 
-	client := asynq.NewClient(asynq.RedisClientOpt{Addr: addr})
-	t.Cleanup(func() { client.Close() })
-	return client
+	rc, err := river.NewClient[pgx.Tx](riverpgxv5.New(pool), &river.Config{})
+	if err != nil {
+		t.Fatalf("newTestRiverClient: %v", err)
+	}
+	return rc
 }
 
 // ── GetByID ───────────────────────────────────────────────────────────────────
@@ -146,7 +134,6 @@ func TestService_GetByID(t *testing.T) {
 
 	svc := newTestService(pool, nil)
 
-	// Pre-insert an application directly so we don't need a real asynq client.
 	appID := uuid.New()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO applications
@@ -198,8 +185,6 @@ func TestService_ListForUser(t *testing.T) {
 
 	svc := newTestService(pool, nil)
 
-	// Insert a second job + match so we can create a second application
-	// (UNIQUE(user_id, job_id) prevents reusing the same job).
 	job2ID := uuid.New()
 	match2ID := uuid.New()
 	_, err := pool.Exec(ctx, `
@@ -225,10 +210,8 @@ func TestService_ListForUser(t *testing.T) {
 		t.Fatalf("insert match2: %v", err)
 	}
 
-	// Insert two applications with different statuses.
 	app1ID := uuid.New()
 	app2ID := uuid.New()
-
 	_, err = pool.Exec(ctx, `
 		INSERT INTO applications (id, user_id, job_id, match_id, resume_id, status, created_at)
 		VALUES ($1,$2,$3,$4,$5,'queued',NOW()),
@@ -293,7 +276,6 @@ func TestService_RecordOutcome(t *testing.T) {
 
 	svc := newTestService(pool, nil)
 
-	// Pre-insert an application.
 	appID := uuid.New()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO applications
@@ -305,13 +287,11 @@ func TestService_RecordOutcome(t *testing.T) {
 		t.Fatalf("insert application: %v", err)
 	}
 
-	// Use OutcomeViewed — does NOT trigger sendOutcomeNotification,
-	// so the nil notification client is never dereferenced.
+	// OutcomeViewed — does NOT trigger sendOutcomeNotification.
 	if err := svc.RecordOutcome(ctx, appID, f.userID, models.OutcomeViewed, ""); err != nil {
 		t.Fatalf("RecordOutcome: %v", err)
 	}
 
-	// Confirm outcome persisted.
 	app, err := svc.GetByID(ctx, appID, f.userID)
 	if err != nil {
 		t.Fatalf("GetByID after RecordOutcome: %v", err)
@@ -342,7 +322,6 @@ func TestService_CountByStatus(t *testing.T) {
 
 	svc := newTestService(pool, nil)
 
-	// Insert one queued application.
 	appID := uuid.New()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO applications
@@ -370,8 +349,8 @@ func TestService_Submit(t *testing.T) {
 	ctx := context.Background()
 	f := seedFixtures(t, ctx, pool)
 
-	asynqClient := newTestAsynqClient(t) // skips if Redis unreachable
-	svc := newTestService(pool, asynqClient)
+	rc := newTestRiverClient(t, pool) // skips if River migration unavailable
+	svc := newTestService(pool, rc)
 
 	app, err := svc.Submit(ctx, f.userID, f.jobID, f.matchID)
 	if err != nil {
@@ -396,9 +375,8 @@ func TestService_Submit_NoPrimaryResume(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
 
-	asynqClient := newTestAsynqClient(t) // skips if Redis unreachable
+	rc := newTestRiverClient(t, pool)
 
-	// Create a user WITHOUT a primary resume.
 	userID := uuid.New()
 	_, err := pool.Exec(ctx, `
 		INSERT INTO users
@@ -440,7 +418,7 @@ func TestService_Submit_NoPrimaryResume(t *testing.T) {
 		t.Fatalf("insert match: %v", err)
 	}
 
-	svc := newTestService(pool, asynqClient)
+	svc := newTestService(pool, rc)
 
 	_, err = svc.Submit(ctx, userID, jobID, matchID)
 	if !errors.Is(err, service.ErrNotFound) {

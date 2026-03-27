@@ -9,7 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hibiken/asynq"
+	"github.com/google/uuid"
+	"github.com/riverqueue/river"
 
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
 	"github.com/bhata/AutoDreamApplier/internal/application/repository"
@@ -19,7 +20,6 @@ import (
 	"github.com/bhata/AutoDreamApplier/internal/browser"
 	"github.com/bhata/AutoDreamApplier/internal/notification"
 	"github.com/bhata/AutoDreamApplier/internal/testhelper"
-	"github.com/google/uuid"
 )
 
 // ── Browser pool stubs ────────────────────────────────────────────────────────
@@ -102,6 +102,11 @@ func seedBrowserWorkerFixtures(t *testing.T, ctx context.Context) workerFixtures
 	return f
 }
 
+// makeBrowserApplyJob creates a River job struct for unit tests.
+func makeBrowserApplyJob(args tasks.BrowserApplyArgs) *river.Job[tasks.BrowserApplyArgs] {
+	return &river.Job[tasks.BrowserApplyArgs]{Args: args}
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 func TestBrowserApplyWorker_HappyPath(t *testing.T) {
@@ -123,17 +128,14 @@ func TestBrowserApplyWorker_HappyPath(t *testing.T) {
 		testhelper.NopLogger(),
 	)
 
-	payload, err := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID,
 		UserID:        f.userID,
 		JobID:         f.jobID,
 	})
-	if err != nil {
-		t.Fatalf("NewBrowserApply: %v", err)
-	}
 
-	if err := w.ProcessTask(ctx, payload); err != nil {
-		t.Fatalf("ProcessTask: %v", err)
+	if err := w.Work(ctx, job); err != nil {
+		t.Fatalf("Work: %v", err)
 	}
 
 	var status string
@@ -164,11 +166,11 @@ func TestBrowserApplyWorker_BrowserFailure_SetsFailedStatus(t *testing.T) {
 		testhelper.NopLogger(),
 	)
 
-	payload, _ := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID, UserID: f.userID, JobID: f.jobID,
 	})
 
-	if err := w.ProcessTask(ctx, payload); err == nil {
+	if err := w.Work(ctx, job); err == nil {
 		t.Error("expected error when browser reports failure; got nil")
 	}
 
@@ -179,31 +181,8 @@ func TestBrowserApplyWorker_BrowserFailure_SetsFailedStatus(t *testing.T) {
 	}
 }
 
-func TestBrowserApplyWorker_BadPayload_ReturnsError(t *testing.T) {
-	pool := testhelper.NewTestPool(t)
-	s3Srv := newS3Stub(t)
-	reg := ats.NewRegistry(testhelper.NopLogger())
-
-	w := workers.NewBrowserApplyWorker(
-		repository.New(pool, testhelper.NopLogger()),
-		browser.New("http://localhost", testhelper.NopLogger()),
-		newS3Client(t, s3Srv.URL),
-		workers.S3Buckets{},
-		reg,
-		nil,
-		testhelper.NopLogger(),
-	)
-
-	// Malformed JSON must return an error without panicking.
-	badTask := asynq.NewTask(tasks.TypeBrowserApply, []byte(`{bad json`))
-	if err := w.ProcessTask(context.Background(), badTask); err == nil {
-		t.Error("expected error for malformed payload; got nil")
-	}
-}
-
 // TestBrowserApplyWorker_BrowserPoolError_SetsFailedStatus verifies that an
-// HTTP-level error from the browser pool (connection refused) marks the
-// application as failed.
+// HTTP-level error from the browser pool marks the application as failed.
 func TestBrowserApplyWorker_BrowserPoolError_SetsFailedStatus(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
@@ -212,7 +191,6 @@ func TestBrowserApplyWorker_BrowserPoolError_SetsFailedStatus(t *testing.T) {
 	s3Srv := newS3Stub(t)
 	reg := ats.NewRegistry(testhelper.NopLogger())
 
-	// Point the browser client at a port where nothing is listening.
 	w := workers.NewBrowserApplyWorker(
 		repository.New(pool, testhelper.NopLogger()),
 		browser.New("http://127.0.0.1:19997", testhelper.NopLogger()), // nothing here
@@ -223,11 +201,11 @@ func TestBrowserApplyWorker_BrowserPoolError_SetsFailedStatus(t *testing.T) {
 		testhelper.NopLogger(),
 	)
 
-	payload, _ := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID, UserID: f.userID, JobID: f.jobID,
 	})
 
-	if err := w.ProcessTask(ctx, payload); err == nil {
+	if err := w.Work(ctx, job); err == nil {
 		t.Error("expected error when browser pool is unreachable; got nil")
 	}
 
@@ -239,15 +217,13 @@ func TestBrowserApplyWorker_BrowserPoolError_SetsFailedStatus(t *testing.T) {
 }
 
 // TestBrowserApplyWorker_WebhookFiredOnSuccess verifies that attaching a
-// WebhookService via WithWebhookService fires an EventApplicationSubmitted
-// webhook containing the correct ApplicationID.
+// WebhookService fires an EventApplicationSubmitted webhook.
 func TestBrowserApplyWorker_WebhookFiredOnSuccess(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
 	f := seedBrowserWorkerFixtures(t, ctx)
 
-	// Capture webhook POSTs.
-	webhookCalled := make(chan string, 2) // buffer for slack + potential discord
+	webhookCalled := make(chan string, 2)
 	webhookSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
@@ -257,7 +233,6 @@ func TestBrowserApplyWorker_WebhookFiredOnSuccess(t *testing.T) {
 	}))
 	t.Cleanup(webhookSrv.Close)
 
-	// Insert webhook prefs for the user.
 	_, err := pool.Exec(ctx,
 		`INSERT INTO user_preferences
 		   (user_id, target_titles, locations, remote_pref, salary_currency, exclusions,
@@ -288,15 +263,14 @@ func TestBrowserApplyWorker_WebhookFiredOnSuccess(t *testing.T) {
 		testhelper.NopLogger(),
 	).WithWebhookService(webhookSvc, "https://app.example.com")
 
-	payload, _ := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID, UserID: f.userID, JobID: f.jobID,
 	})
 
-	if err := w.ProcessTask(ctx, payload); err != nil {
-		t.Fatalf("ProcessTask: %v", err)
+	if err := w.Work(ctx, job); err != nil {
+		t.Fatalf("Work: %v", err)
 	}
 
-	// Give the goroutine launched by WebhookService.Send time to deliver.
 	select {
 	case msg := <-webhookCalled:
 		if !strings.Contains(msg, "Applied") {
@@ -307,9 +281,8 @@ func TestBrowserApplyWorker_WebhookFiredOnSuccess(t *testing.T) {
 	}
 }
 
-// TestBrowserApplyWorker_WebhookFiredOnFailure verifies that attaching a
-// WebhookService fires an EventApplicationFailed webhook with the error message
-// when the browser pool reports failure.
+// TestBrowserApplyWorker_WebhookFiredOnFailure verifies that a failure webhook
+// is fired with the error message when the browser pool reports failure.
 func TestBrowserApplyWorker_WebhookFiredOnFailure(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
@@ -340,7 +313,7 @@ func TestBrowserApplyWorker_WebhookFiredOnFailure(t *testing.T) {
 		t.Fatalf("insert user_preferences: %v", err)
 	}
 
-	browserSrv := newBrowserStub(t, false) // browser reports failure
+	browserSrv := newBrowserStub(t, false)
 	s3Srv := newS3Stub(t)
 	reg := ats.NewRegistry(testhelper.NopLogger())
 	webhookSvc := notification.NewWebhookService(testhelper.NopLogger())
@@ -355,11 +328,11 @@ func TestBrowserApplyWorker_WebhookFiredOnFailure(t *testing.T) {
 		testhelper.NopLogger(),
 	).WithWebhookService(webhookSvc, "https://app.example.com")
 
-	payload, _ := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID, UserID: f.userID, JobID: f.jobID,
 	})
 
-	if err := w.ProcessTask(ctx, payload); err == nil {
+	if err := w.Work(ctx, job); err == nil {
 		t.Error("expected error from browser failure; got nil")
 	}
 
@@ -373,8 +346,8 @@ func TestBrowserApplyWorker_WebhookFiredOnFailure(t *testing.T) {
 	}
 }
 
-// TestBrowserApplyWorker_ContextDeadlineExceeded verifies that an expired
-// context causes the worker to return an error and mark the application failed.
+// TestBrowserApplyWorker_ContextDeadlineExceeded verifies that a cancelled
+// context causes the worker to return an error.
 func TestBrowserApplyWorker_ContextDeadlineExceeded(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
@@ -383,10 +356,7 @@ func TestBrowserApplyWorker_ContextDeadlineExceeded(t *testing.T) {
 	s3Srv := newS3Stub(t)
 	reg := ats.NewRegistry(testhelper.NopLogger())
 
-	// Browser stub that hangs long enough for the deadline to fire first.
 	browserSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Respond immediately but the DB UpdateStatus call will use the
-		// already-expired context, so the worker itself returns an error.
 		json.NewEncoder(w).Encode(browser.ApplyResponse{Success: true}) //nolint:errcheck
 	}))
 	t.Cleanup(browserSrv.Close)
@@ -401,24 +371,19 @@ func TestBrowserApplyWorker_ContextDeadlineExceeded(t *testing.T) {
 		testhelper.NopLogger(),
 	)
 
-	payload, _ := tasks.NewBrowserApply(tasks.BrowserApplyPayload{
+	job := makeBrowserApplyJob(tasks.BrowserApplyArgs{
 		ApplicationID: f.appID, UserID: f.userID, JobID: f.jobID,
 	})
 
-	// Use a context that has already expired.
 	deadCtx, cancel := context.WithCancel(context.Background())
 	cancel() // immediately cancelled
 
-	if err := w.ProcessTask(deadCtx, payload); err == nil {
+	if err := w.Work(deadCtx, job); err == nil {
 		t.Error("expected error with cancelled context; got nil")
 	}
 
-	// Status should be failed because the first DB call (UpdateStatus applying)
-	// will fail when context is cancelled.
 	var status string
 	pool.QueryRow(ctx, `SELECT status FROM applications WHERE id = $1`, f.appID).Scan(&status) //nolint:errcheck
-	// Status could stay "ai_ready" (pre-cancelled) or flip to "failed" depending
-	// on timing; what matters is it never reaches "applied".
 	if status == string(models.StatusApplied) {
 		t.Errorf("status = %q; application should not be applied with cancelled context", status)
 	}
