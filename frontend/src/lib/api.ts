@@ -53,8 +53,9 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
-      const body = (await res.json()) as { message?: string; error?: string };
-      message = body.message ?? body.error ?? message;
+      const body = (await res.json()) as { message?: unknown; error?: unknown };
+      const msg = body.message ?? body.error;
+      if (typeof msg === "string" && msg) message = msg;
     } catch {
       // use status text
     }
@@ -296,8 +297,9 @@ export async function getSalaryBenchmark(
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
-      const body = (await res.json()) as { message?: string; error?: string };
-      message = body.message ?? body.error ?? message;
+      const body = (await res.json()) as { message?: unknown; error?: unknown };
+      const msg = body.message ?? body.error;
+      if (typeof msg === "string" && msg) message = msg;
     } catch {
       // use status text
     }
