@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS trg_update_resume_stats ON applications;
+DROP TRIGGER IF EXISTS trg_increment_resume_app_count ON applications;
+DROP FUNCTION IF EXISTS update_resume_stats();
+DROP FUNCTION IF EXISTS increment_resume_application_count();
+ALTER TABLE resumes DROP COLUMN IF EXISTS ab_enabled;
+ALTER TABLE resumes DROP COLUMN IF EXISTS ab_weight;
+ALTER TABLE resumes DROP COLUMN IF EXISTS total_applications;
+ALTER TABLE resumes DROP COLUMN IF EXISTS total_views;
+ALTER TABLE resumes DROP COLUMN IF EXISTS total_interviews;
+ALTER TABLE resumes DROP COLUMN IF EXISTS total_offers;

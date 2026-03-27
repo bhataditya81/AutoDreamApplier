@@ -29,8 +29,10 @@ type BrowserApplyWorker struct {
 	browserClient *browser.Client
 	s3Client      *pkgs3.Client
 	buckets       S3Buckets
-	atsRegistry   *ats.Registry        // guards against unsupported ATS types before browser call
-	notifier      *notification.Client // nil-safe; no-ops when SES is unconfigured
+	atsRegistry   *ats.Registry           // guards against unsupported ATS types before browser call
+	notifier      *notification.Client    // nil-safe; no-ops when SES is unconfigured
+	webhookSvc    *notification.WebhookService // nil-safe; no-ops when not configured
+	dashboardURL  string
 	log           zerolog.Logger
 }
 
@@ -54,6 +56,25 @@ func NewBrowserApplyWorker(
 		notifier:      notifier,
 		log:           log,
 	}
+}
+
+// WithWebhookService attaches a WebhookService and dashboard base URL for
+// firing Slack/Discord notifications on application outcomes.
+// webhookSvc may be nil — all webhook calls become no-ops.
+func (w *BrowserApplyWorker) WithWebhookService(ws *notification.WebhookService, dashboardURL string) *BrowserApplyWorker {
+	w.webhookSvc = ws
+	w.dashboardURL = dashboardURL
+	return w
+}
+
+// toWebhookEvents converts a slice of raw event strings (stored in user
+// preferences) into typed notification.WebhookEvent values.
+func toWebhookEvents(events []string) []notification.WebhookEvent {
+	out := make([]notification.WebhookEvent, 0, len(events))
+	for _, e := range events {
+		out = append(out, notification.WebhookEvent(e))
+	}
+	return out
 }
 
 // ProcessTask implements asynq.HandlerFunc for TypeBrowserApply tasks.
@@ -161,12 +182,15 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 		FormAnswers:     formAnswers,
 	})
 	if err != nil {
-		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("browser apply HTTP call: %v", err))
+		errMsg := fmt.Sprintf("browser apply HTTP call: %v", err)
+		w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+		return w.failApp(ctx, p.ApplicationID, errMsg)
 	}
 
 	if !applyResp.Success {
-		return w.failApp(ctx, p.ApplicationID,
-			fmt.Sprintf("browser apply failed: %s", applyResp.ErrorMessage))
+		errMsg := fmt.Sprintf("browser apply failed: %s", applyResp.ErrorMessage)
+		w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+		return w.failApp(ctx, p.ApplicationID, errMsg)
 	}
 
 	// ── Persist screenshot + mark applied ─────────────────────────────────────
@@ -197,6 +221,23 @@ func (w *BrowserApplyWorker) ProcessTask(ctx context.Context, t *asynq.Task) err
 	// ── Notify user of successful application (non-fatal) ─────────────────────
 	w.sendSubmittedNotification(ctx, p.ApplicationID, user.Email, user.FullName, job.Title, job.Company)
 
+	// ── Webhook: application submitted ────────────────────────────────────────
+	if w.webhookSvc != nil {
+		prefs, err := w.appRepo.GetPreferences(ctx, p.UserID)
+		if err == nil && prefs != nil {
+			cfg := notification.WebhookConfig{
+				SlackURL:   prefs.SlackWebhookURL,
+				DiscordURL: prefs.DiscordWebhookURL,
+				Events:     toWebhookEvents(prefs.WebhookEvents),
+			}
+			w.webhookSvc.Send(ctx, cfg, notification.EventApplicationSubmitted, map[string]string{
+				"title":         job.Title,
+				"company":       job.Company,
+				"dashboard_url": w.dashboardURL + "/dashboard/applications/" + p.ApplicationID.String(),
+			})
+		}
+	}
+
 	return nil
 }
 
@@ -217,6 +258,32 @@ func (w *BrowserApplyWorker) sendSubmittedNotification(
 			Str("app_id", appID.String()).
 			Msg("submitted notify: SES send failed (non-fatal)")
 	}
+}
+
+// sendFailureWebhook fires an EventApplicationFailed webhook for the user.
+// Errors are silently ignored — the apply failure itself is already logged.
+func (w *BrowserApplyWorker) sendFailureWebhook(
+	ctx context.Context,
+	userID uuid.UUID,
+	jobTitle, company, errMsg string,
+) {
+	if w.webhookSvc == nil {
+		return
+	}
+	prefs, err := w.appRepo.GetPreferences(ctx, userID)
+	if err != nil || prefs == nil {
+		return
+	}
+	cfg := notification.WebhookConfig{
+		SlackURL:   prefs.SlackWebhookURL,
+		DiscordURL: prefs.DiscordWebhookURL,
+		Events:     toWebhookEvents(prefs.WebhookEvents),
+	}
+	w.webhookSvc.Send(ctx, cfg, notification.EventApplicationFailed, map[string]string{
+		"title":   jobTitle,
+		"company": company,
+		"error":   errMsg,
+	})
 }
 
 // failApp records an error on the application and returns the wrapped error.

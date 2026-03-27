@@ -10,14 +10,19 @@ import {
   Settings,
   Zap,
   LogOut,
+  BarChart2,
+  LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth";
 import { getPreferences } from "@/lib/api";
 
 const navItems = [
+  { href: "/dashboard/overview",     label: "Overview",     icon: BarChart2 },
   { href: "/dashboard/matches",      label: "Match Queue",  icon: LayoutDashboard },
   { href: "/dashboard/applications", label: "Applications", icon: Layers },
+  { href: "/dashboard/analytics",    label: "Analytics",    icon: LineChart },
+  { href: "/dashboard/resumes",      label: "Resumes",      icon: FileText },
   { href: "/dashboard/settings",     label: "Settings",     icon: Settings },
 ] as const;
 
@@ -77,14 +82,7 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 border-t border-border space-y-0.5">
-        <Link
-          href="/dashboard/resumes"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-        >
-          <FileText className="h-4 w-4 text-gray-400" aria-hidden="true" />
-          Resumes
-        </Link>
+      <div className="px-3 py-4 border-t border-border">
         <button
           onClick={logout}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"

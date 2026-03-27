@@ -25,12 +25,12 @@ type User struct {
 type UserPreferences struct {
 	ID                    uuid.UUID  `json:"id" db:"id"`
 	UserID                uuid.UUID  `json:"user_id" db:"user_id"`
-	TargetTitles          []string   `json:"target_titles" db:"target_titles"`
+	TargetTitles          []string   `json:"targetTitles" db:"target_titles"`
 	Locations             []string   `json:"locations" db:"locations"`
-	RemotePref            string     `json:"remote_pref" db:"remote_pref"`
-	SalaryMin             *int       `json:"salary_min" db:"salary_min"`
-	SalaryMax             *int       `json:"salary_max" db:"salary_max"`
-	SalaryCurrency        string     `json:"salary_currency" db:"salary_currency"`
+	RemotePref            string     `json:"remotePref" db:"remote_pref"`
+	SalaryMin             *int       `json:"salaryMin" db:"salary_min"`
+	SalaryMax             *int       `json:"salaryMax" db:"salary_max"`
+	SalaryCurrency        string     `json:"salaryCurrency" db:"salary_currency"`
 	Exclusions            []string   `json:"exclusions" db:"exclusions"`
 	AiTailorEnabled       bool       `json:"ai_tailor_enabled" db:"ai_tailor_enabled"`
 	AutoApplyEnabled      bool       `json:"autoApplyEnabled" db:"auto_apply_enabled"`
@@ -48,15 +48,23 @@ type UserPreferences struct {
 
 // Resume represents an uploaded resume.
 type Resume struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	UserID          uuid.UUID  `json:"user_id" db:"user_id"`
-	FileName        string     `json:"file_name" db:"file_name"`
-	S3Key           string     `json:"s3_key" db:"s3_key"`
-	ParsedJSON      []byte     `json:"parsed_json,omitempty" db:"parsed_json"`
-	RawText         string     `json:"raw_text,omitempty" db:"raw_text"`
-	IsPrimary       bool       `json:"is_primary" db:"is_primary"`
-	InterviewCount  int        `json:"interview_count" db:"interview_count"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	ID                uuid.UUID `json:"id" db:"id"`
+	UserID            uuid.UUID `json:"user_id" db:"user_id"`
+	FileName          string    `json:"file_name" db:"file_name"`
+	S3Key             string    `json:"s3_key" db:"s3_key"`
+	ParsedJSON        []byte    `json:"parsed_json,omitempty" db:"parsed_json"`
+	RawText           string    `json:"raw_text,omitempty" db:"raw_text"`
+	IsPrimary         bool      `json:"is_primary" db:"is_primary"`
+	InterviewCount    int       `json:"interview_count" db:"interview_count"`
+	AbEnabled         bool      `json:"ab_enabled" db:"ab_enabled"`
+	AbWeight          int       `json:"ab_weight" db:"ab_weight"`
+	TotalApplications int       `json:"total_applications" db:"total_applications"`
+	TotalViews        int       `json:"total_views" db:"total_views"`
+	TotalInterviews   int       `json:"total_interviews" db:"total_interviews"`
+	TotalOffers       int       `json:"total_offers" db:"total_offers"`
+	// InterviewRate is a computed field (not stored): TotalInterviews / TotalApplications * 100
+	InterviewRate float64   `json:"interview_rate" db:"-"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 // CreateUserRequest is the payload for creating/syncing a user from Cognito.
@@ -75,12 +83,12 @@ type UpdateUserRequest struct {
 
 // UpdatePreferencesRequest is the payload for updating job preferences.
 type UpdatePreferencesRequest struct {
-	TargetTitles          []string `json:"target_titles" validate:"required,min=1"`
+	TargetTitles          []string `json:"targetTitles" validate:"required,min=1"`
 	Locations             []string `json:"locations"`
-	RemotePref            string   `json:"remote_pref" validate:"required,oneof=remote hybrid onsite any"`
-	SalaryMin             *int     `json:"salary_min" validate:"omitempty,min=0"`
-	SalaryMax             *int     `json:"salary_max" validate:"omitempty,min=0"`
-	SalaryCurrency        string   `json:"salary_currency" validate:"omitempty,len=3"`
+	RemotePref            string   `json:"remotePref" validate:"required,oneof=remote hybrid onsite any"`
+	SalaryMin             *int     `json:"salaryMin" validate:"omitempty,min=0"`
+	SalaryMax             *int     `json:"salaryMax" validate:"omitempty,min=0"`
+	SalaryCurrency        string   `json:"salaryCurrency" validate:"omitempty,len=3"`
 	Exclusions            []string `json:"exclusions"`
 	AiTailorEnabled       *bool    `json:"ai_tailor_enabled,omitempty"`
 	AutoApplyEnabled      *bool    `json:"autoApplyEnabled,omitempty"`

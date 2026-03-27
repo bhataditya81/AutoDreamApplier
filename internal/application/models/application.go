@@ -52,6 +52,7 @@ type Application struct {
 	ErrorMessage        string             `json:"error_message,omitempty" db:"error_message"`
 	AppliedAt           *time.Time         `json:"applied_at,omitempty" db:"applied_at"`
 	OutcomeUpdatedAt    *time.Time         `json:"outcome_updated_at,omitempty" db:"outcome_updated_at"`
+	OutcomeNotes        string             `json:"outcome_notes,omitempty" db:"outcome_notes"`
 	CreatedAt           time.Time          `json:"created_at" db:"created_at"`
 }
 
@@ -87,4 +88,5 @@ type SubmitRequest struct {
 // UpdateOutcomeRequest is the HTTP body for recording an application outcome.
 type UpdateOutcomeRequest struct {
 	Outcome string `json:"outcome"`
+	Notes   string `json:"notes,omitempty"` // optional free-text notes (stored in outcome_notes)
 }

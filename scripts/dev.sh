@@ -68,10 +68,22 @@ check_cmd() {
   fi
 }
 
-check_cmd docker        "Install Docker Desktop: https://docs.docker.com/get-docker/"
-check_cmd docker-compose "Comes with Docker Desktop"
-check_cmd node          "Install Node.js ≥ 18: https://nodejs.org"
-check_cmd npm           "Comes with Node.js"
+check_cmd docker "Install Docker Desktop: https://docs.docker.com/get-docker/"
+check_cmd node   "Install Node.js ≥ 18: https://nodejs.org"
+check_cmd npm    "Comes with Node.js"
+
+# Resolve docker compose command — prefer v2 plugin, fall back to v1 binary
+if docker compose version &>/dev/null 2>&1; then
+  DC="docker compose"
+  print_ok "docker compose (v2)"
+elif command -v docker-compose &>/dev/null; then
+  DC="docker-compose"
+  print_ok "docker-compose (v1)"
+else
+  print_err "Neither 'docker compose' nor 'docker-compose' found."
+  print_info "Upgrade Docker Desktop to get the v2 plugin: https://docs.docker.com/compose/install/"
+  exit 1
+fi
 
 if command -v migrate &>/dev/null; then
   print_ok "golang-migrate"
@@ -125,7 +137,7 @@ else
   print_info "Starting containers with cached images..."
 fi
 
-docker-compose up ${COMPOSE_ARGS}
+${DC} up ${COMPOSE_ARGS}
 print_ok "All containers started"
 
 # ── 4. Wait for PostgreSQL ────────────────────────────────────────────────────
@@ -134,11 +146,11 @@ print_header "Waiting for PostgreSQL"
 MAX_WAIT=90
 WAITED=0
 printf "  Polling"
-until docker-compose exec -T postgres pg_isready -U autodream -d autodreamapplier &>/dev/null 2>&1; do
+until ${DC} exec -T postgres pg_isready -U autodream -d autodreamapplier &>/dev/null 2>&1; do
   if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
     echo ""
     print_err "PostgreSQL not ready after ${MAX_WAIT}s"
-    print_info "Check logs: docker-compose logs postgres"
+    print_info "Check logs: ${DC} logs postgres"
     exit 1
   fi
   printf "."
@@ -174,7 +186,7 @@ if [ "${NO_FRONTEND}" = true ]; then
   echo -e "  ${CYAN}→ AI Service${NC}    http://localhost:8081"
   echo -e "  ${CYAN}→ MinIO Console${NC} http://localhost:9001  (minioadmin / minioadmin)"
   echo ""
-  echo -e "  ${YELLOW}To stop: docker-compose down${NC}"
+  echo -e "  ${YELLOW}To stop: ${DC} down${NC}"
   exit 0
 fi
 
@@ -197,8 +209,8 @@ echo -e "  ${CYAN}→ AI Service    ${NC}http://localhost:8081"
 echo -e "  ${CYAN}→ MinIO Console ${NC}http://localhost:9001  ${YELLOW}(minioadmin / minioadmin)${NC}"
 echo ""
 echo -e "  ${YELLOW}Ctrl+C stops the frontend. Backend keeps running.${NC}"
-echo -e "  ${YELLOW}To stop everything: docker-compose down${NC}"
-echo -e "  ${YELLOW}To wipe all data:   docker-compose down -v${NC}"
+echo -e "  ${YELLOW}To stop everything: ${DC} down${NC}"
+echo -e "  ${YELLOW}To wipe all data:   ${DC} down -v${NC}"
 echo ""
 
 # Launch Next.js in the foreground so hot-reload works and logs are visible

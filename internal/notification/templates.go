@@ -6,10 +6,11 @@ import "html/template"
 // Panics at startup if a template is malformed — this is intentional (fail fast).
 
 var (
-	tmplSubmitted   = template.Must(template.New("submitted").Parse(htmlSubmitted))
-	tmplFailed      = template.Must(template.New("failed").Parse(htmlFailed))
-	tmplOutcome     = template.Must(template.New("outcome").Parse(htmlOutcome))
-	tmplWeeklyDigest = template.Must(template.New("weekly_digest").Parse(htmlWeeklyDigest))
+	tmplSubmitted        = template.Must(template.New("submitted").Parse(htmlSubmitted))
+	tmplFailed           = template.Must(template.New("failed").Parse(htmlFailed))
+	tmplOutcome          = template.Must(template.New("outcome").Parse(htmlOutcome))
+	tmplWeeklyDigest     = template.Must(template.New("weekly_digest").Parse(htmlWeeklyDigest))
+	tmplFollowUpReminder = template.Must(template.New("followup_reminder").Parse(htmlFollowUpReminder))
 )
 
 // ─── Submitted ────────────────────────────────────────────────────────────────
@@ -274,6 +275,62 @@ const htmlWeeklyDigest = `<!DOCTYPE html>
             <a href="{{.DashboardURL}}/settings" style="color:#9ca3af;">Manage notifications</a>
             &nbsp;·&nbsp;
             <a href="{{.DashboardURL}}/unsubscribe" style="color:#9ca3af;">Unsubscribe</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+// ─── Follow-Up Reminder ───────────────────────────────────────────────────────
+
+const htmlFollowUpReminder = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Follow Up on Your Application</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Inter,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <!-- Header -->
+        <tr><td style="background:#4f46e5;padding:32px 40px;">
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">AutoDreamApplier</h1>
+          <p style="margin:8px 0 0;color:#c7d2fe;font-size:14px;">Job Application Reminder</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 16px;font-size:16px;color:#111827;">Hi {{.UserName}},</p>
+          <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">
+            It's been <strong>{{.DaysElapsed}} days</strong> since you applied for
+            <strong>{{.JobTitle}}</strong> at <strong>{{.Company}}</strong>
+            and you haven't heard back yet.
+          </p>
+          <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
+            Now is a great time to send a follow-up email directly to the hiring team.
+            A brief, polite check-in can keep your application top of mind.
+          </p>
+          <!-- CTA -->
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+            <tr><td style="background:#4f46e5;border-radius:8px;padding:14px 28px;">
+              <a href="{{.DashboardURL}}"
+                 style="color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;">
+                View Your Applications
+              </a>
+            </td></tr>
+          </table>
+          <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.5;">
+            If you've already followed up or received a response, you can dismiss
+            this reminder from your dashboard.
+          </p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f9fafb;padding:24px 40px;border-top:1px solid #f3f4f6;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+            &copy; {{.Year}} AutoDreamApplier. All rights reserved.
           </p>
         </td></tr>
       </table>

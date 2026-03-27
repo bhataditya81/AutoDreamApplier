@@ -10,14 +10,16 @@ import (
 
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
+	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scam"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
 )
 
 // DiscoveryService orchestrates job discovery across all enabled scrapers.
 type DiscoveryService struct {
-	repo     *repository.JobRepository
-	scrapers []scrapers.Scraper
-	log      zerolog.Logger
+	repo         *repository.JobRepository
+	scrapers     []scrapers.Scraper
+	scamDetector *scam.Detector
+	log          zerolog.Logger
 }
 
 // NewDiscoveryService creates a new discovery service with all registered scrapers.
@@ -30,9 +32,10 @@ func NewDiscoveryService(repo *repository.JobRepository, log zerolog.Logger, ext
 		scrapers.NewZipRecruiterScraper(),
 	}
 	return &DiscoveryService{
-		repo:     repo,
-		scrapers: append(base, extra...),
-		log:      log.With().Str("service", "discovery").Logger(),
+		repo:         repo,
+		scrapers:     append(base, extra...),
+		scamDetector: scam.New(),
+		log:          log.With().Str("service", "discovery").Logger(),
 	}
 }
 
@@ -153,6 +156,18 @@ func (s *DiscoveryService) runScraper(ctx context.Context, sc scrapers.Scraper, 
 					Dur("duration", result.Duration).
 					Msg("Scrape complete")
 				return result
+			}
+
+			// Run scam detection before persisting.
+			scamResult := s.scamDetector.Classify(job)
+			job.IsScam = scamResult.IsScam
+			job.ScamScore = scamResult.Score
+			if scamResult.IsScam {
+				log.Warn().
+					Str("job_id", job.ExternalID).
+					Float64("score", scamResult.Score).
+					Strs("reasons", scamResult.Reasons).
+					Msg("scam job detected")
 			}
 
 			batch = append(batch, job)

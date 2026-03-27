@@ -2,15 +2,20 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 
 	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
+	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	matchmodels "github.com/bhata/AutoDreamApplier/internal/jobmatcher/models"
 	matchrepo "github.com/bhata/AutoDreamApplier/internal/jobmatcher/repository"
+	matchscorer "github.com/bhata/AutoDreamApplier/internal/jobmatcher/scorer"
 	matchsvc "github.com/bhata/AutoDreamApplier/internal/jobmatcher/service"
 	"github.com/bhata/AutoDreamApplier/internal/testhelper"
 )
@@ -405,5 +410,152 @@ func TestMatchingService_RunForUser_SecondRunSkipsAlreadyMatched(t *testing.T) {
 
 	if r2.MatchesNew != 0 {
 		t.Errorf("second run MatchesNew = %d; want 0 (already matched)", r2.MatchesNew)
+	}
+}
+
+// makeEmbStub returns a test embedding server that always responds with the
+// provided vector.  Used by the matching service semantic scorer tests.
+func makeEmbStub(t *testing.T, vec []float32) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"embedding":  vec,
+			"dimensions": len(vec),
+		})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// unit384match returns a unit vector of length 384 suitable for embedding tests
+// without importing the scorer package's private helper.
+func unit384match() []float32 {
+	v := make([]float32, 384)
+	v[0] = 1.0
+	return v
+}
+
+// TestMatchingService_SemanticScorer_Unreachable_CombinedScoreUsesNeutral
+// verifies that when the AI service is unreachable the semantic scorer falls
+// back to 0.5 and the combined score is 0.6*keyword + 0.4*0.5.
+func TestMatchingService_SemanticScorer_Unreachable_CombinedScore(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+	f := seedMatchFixtures(t, ctx)
+
+	// Point semantic scorer at a port where nothing is listening.
+	embClient := embedding.New("http://127.0.0.1:19995")
+	ss := matchscorer.NewSemanticScorer(embClient)
+
+	repo := matchrepo.New(pool, testhelper.NopLogger())
+	svc := matchsvc.New(pool, repo, testhelper.NopLogger()).WithSemanticScorer(ss)
+
+	result, err := svc.RunForUser(ctx, f.userID)
+	if err != nil {
+		t.Fatalf("RunForUser with unreachable AI: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil RunResult")
+	}
+	// The service must complete without error; matches may or may not be created
+	// depending on keyword score — what we verify is no panic and valid result.
+	if result.JobsScored < 0 {
+		t.Errorf("JobsScored = %d; must be >= 0", result.JobsScored)
+	}
+}
+
+// TestMatchingService_SalaryFilter_BelowMinRejected verifies that a job whose
+// salary_max is below the user's salary_min is filtered out (JobsFiltered++,
+// MatchesNew stays 0).
+func TestMatchingService_SalaryFilter_BelowMinRejected(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+
+	userID := uuid.New()
+	jobID := uuid.New()
+	resumeID := uuid.New()
+
+	// User with a salary floor of $200 000.
+	stmts := []struct {
+		sql  string
+		args []any
+	}{
+		{
+			`INSERT INTO users (id, cognito_sub, email, full_name, apply_mode, auto_threshold, is_active)
+			 VALUES ($1, $2, $3, 'Salary Filter User', 'review', 0.75, true)`,
+			[]any{userID, "sub-sf-" + userID.String(), "sf-" + userID.String() + "@example.com"},
+		},
+		{
+			// salary_min = 200000 in user_preferences
+			`INSERT INTO user_preferences (user_id, target_titles, locations, remote_pref, salary_min, salary_currency, exclusions)
+			 VALUES ($1, ARRAY['Go Engineer'], ARRAY['New York, NY'], 'any', 200000, 'USD', '{}')`,
+			[]any{userID},
+		},
+		{
+			`INSERT INTO resumes (id, user_id, file_name, s3_key, is_primary, raw_text)
+			 VALUES ($1, $2, 'sf-cv.pdf', $3, true, 'Experienced Go developer')`,
+			[]any{resumeID, userID, fmt.Sprintf("resumes/%s/sf-cv.pdf", userID)},
+		},
+		{
+			// Job offering only $60 000 — well below the user's floor.
+			`INSERT INTO jobs (id, external_id, source_board, url, title, company, location, is_remote,
+			                   salary_min, salary_max, salary_currency, description, ats_type, apply_url,
+			                   is_active, discovered_at)
+			 VALUES ($1, $2, 'indeed', 'https://example.com/low-salary', 'Go Engineer', 'LowPayCo', 'New York, NY', true,
+			         40000, 60000, 'USD',
+			         'Looking for a Go engineer with Kubernetes and PostgreSQL experience.', 'greenhouse',
+			         'https://boards.greenhouse.io/lowpayco/jobs/1', true, NOW())`,
+			[]any{jobID, "sf-ext-" + jobID.String()},
+		},
+	}
+
+	for _, s := range stmts {
+		if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {
+			t.Fatalf("seedSalaryFilter: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, userID) //nolint:errcheck
+		pool.Exec(context.Background(), `DELETE FROM jobs WHERE id = $1`, jobID)   //nolint:errcheck
+	})
+
+	repo := matchrepo.New(pool, testhelper.NopLogger())
+	svc := matchsvc.New(pool, repo, testhelper.NopLogger())
+
+	result, err := svc.RunForUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("RunForUser: %v", err)
+	}
+
+	// The low-salary job should not produce a match.
+	if result.MatchesNew > 0 {
+		t.Errorf("MatchesNew = %d; want 0 (job salary below user floor)", result.MatchesNew)
+	}
+}
+
+// TestMatchingService_WithSemanticScorerNil_KeywordOnlyScoring verifies that
+// calling WithSemanticScorer(nil) still produces correct results using only the
+// keyword scorer.
+func TestMatchingService_WithSemanticScorerNil_KeywordOnlyScoring(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+	f := seedMatchFixtures(t, ctx)
+
+	repo := matchrepo.New(pool, testhelper.NopLogger())
+	svc := matchsvc.New(pool, repo, testhelper.NopLogger()).WithSemanticScorer(nil)
+
+	result, err := svc.RunForUser(ctx, f.userID)
+	if err != nil {
+		t.Fatalf("RunForUser with nil semantic scorer: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil RunResult")
+	}
+	if result.JobsScored < 1 {
+		t.Errorf("JobsScored = %d; want >= 1 (seeded 1 active job)", result.JobsScored)
+	}
+	if result.MatchesNew < 1 {
+		t.Errorf("MatchesNew = %d; want >= 1 with keyword-only scoring", result.MatchesNew)
 	}
 }

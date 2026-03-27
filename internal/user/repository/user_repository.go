@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,19 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Us
 }
 
 // FindByCognitoSub retrieves a user by their Cognito sub.
+// GetUserIDBySub returns the database UUID for the given Cognito sub.
+// Satisfies the handler.UserResolver interface used by the application handler.
+func (r *UserRepository) GetUserIDBySub(ctx context.Context, sub string) (uuid.UUID, error) {
+	user, err := r.FindByCognitoSub(ctx, sub)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if user == nil {
+		return uuid.Nil, fmt.Errorf("user not found for sub %q", sub)
+	}
+	return user.ID, nil
+}
+
 func (r *UserRepository) FindByCognitoSub(ctx context.Context, sub string) (*models.User, error) {
 	user := &models.User{}
 	err := r.pool.QueryRow(ctx,
@@ -254,10 +268,14 @@ func (r *UserRepository) UpsertPreferences(ctx context.Context, userID uuid.UUID
 	return prefs, nil
 }
 
-// GetResumes retrieves all resumes for a user.
+// GetResumes retrieves all resumes for a user, including A/B testing columns.
 func (r *UserRepository) GetResumes(ctx context.Context, userID uuid.UUID) ([]models.Resume, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, file_name, s3_key, is_primary, interview_count, created_at
+		`SELECT id, user_id, file_name, s3_key, is_primary, interview_count,
+		        COALESCE(ab_enabled, false), COALESCE(ab_weight, 1),
+		        COALESCE(total_applications, 0), COALESCE(total_views, 0),
+		        COALESCE(total_interviews, 0), COALESCE(total_offers, 0),
+		        created_at
 		 FROM resumes WHERE user_id = $1 ORDER BY created_at DESC`, userID,
 	)
 	if err != nil {
@@ -267,17 +285,104 @@ func (r *UserRepository) GetResumes(ctx context.Context, userID uuid.UUID) ([]mo
 
 	var resumes []models.Resume
 	for rows.Next() {
-		var r models.Resume
+		var resume models.Resume
 		if err := rows.Scan(
-			&r.ID, &r.UserID, &r.FileName, &r.S3Key,
-			&r.IsPrimary, &r.InterviewCount, &r.CreatedAt,
+			&resume.ID, &resume.UserID, &resume.FileName, &resume.S3Key,
+			&resume.IsPrimary, &resume.InterviewCount,
+			&resume.AbEnabled, &resume.AbWeight,
+			&resume.TotalApplications, &resume.TotalViews,
+			&resume.TotalInterviews, &resume.TotalOffers,
+			&resume.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning resume: %w", err)
 		}
-		resumes = append(resumes, r)
+		// Compute interview rate as a percentage
+		if resume.TotalApplications > 0 {
+			resume.InterviewRate = float64(resume.TotalInterviews) / float64(resume.TotalApplications) * 100
+		}
+		resumes = append(resumes, resume)
 	}
 
 	return resumes, nil
+}
+
+// GetABResume selects a resume for A/B testing using weighted random sampling.
+// If the user has any resumes with ab_enabled=true, pick one weighted by ab_weight.
+// Otherwise, return the primary resume.
+func (r *UserRepository) GetABResume(ctx context.Context, userID uuid.UUID) (*models.Resume, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, user_id, file_name, s3_key, is_primary, interview_count,
+		        COALESCE(ab_enabled, false), COALESCE(ab_weight, 1),
+		        COALESCE(total_applications, 0), COALESCE(total_views, 0),
+		        COALESCE(total_interviews, 0), COALESCE(total_offers, 0),
+		        created_at
+		 FROM resumes
+		 WHERE user_id = $1 AND COALESCE(ab_enabled, false) = true
+		 ORDER BY ab_weight DESC`, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting ab resumes: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []models.Resume
+	for rows.Next() {
+		var resume models.Resume
+		if err := rows.Scan(
+			&resume.ID, &resume.UserID, &resume.FileName, &resume.S3Key,
+			&resume.IsPrimary, &resume.InterviewCount,
+			&resume.AbEnabled, &resume.AbWeight,
+			&resume.TotalApplications, &resume.TotalViews,
+			&resume.TotalInterviews, &resume.TotalOffers,
+			&resume.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning ab resume: %w", err)
+		}
+		if resume.TotalApplications > 0 {
+			resume.InterviewRate = float64(resume.TotalInterviews) / float64(resume.TotalApplications) * 100
+		}
+		candidates = append(candidates, resume)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating ab resumes: %w", err)
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil // caller should fall back to primary
+	}
+	if len(candidates) == 1 {
+		return &candidates[0], nil
+	}
+
+	// Weighted random selection
+	totalWeight := 0
+	for _, c := range candidates {
+		totalWeight += c.AbWeight
+	}
+	pick := rand.Intn(totalWeight)
+	cumulative := 0
+	for i, c := range candidates {
+		cumulative += c.AbWeight
+		if pick < cumulative {
+			return &candidates[i], nil
+		}
+	}
+	return &candidates[len(candidates)-1], nil
+}
+
+// UpdateResumeAB updates the A/B testing settings for a resume owned by the user.
+func (r *UserRepository) UpdateResumeAB(ctx context.Context, resumeID, userID uuid.UUID, enabled bool, weight int) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE resumes SET ab_enabled = $1, ab_weight = $2 WHERE id = $3 AND user_id = $4`,
+		enabled, weight, resumeID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating resume ab settings: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("resume not found")
+	}
+	return nil
 }
 
 // CreateResume inserts a new resume record.

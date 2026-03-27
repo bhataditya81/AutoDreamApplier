@@ -14,6 +14,7 @@ import (
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
 	"github.com/bhata/AutoDreamApplier/internal/application/repository"
 	"github.com/bhata/AutoDreamApplier/internal/application/tasks"
+	"github.com/bhata/AutoDreamApplier/internal/notification"
 	pkgs3 "github.com/bhata/AutoDreamApplier/pkg/s3"
 )
 
@@ -29,12 +30,13 @@ type S3Buckets struct {
 // pre-answer common form questions, stores the results in S3, then enqueues
 // the Stage 2 browser-apply task.
 type AIPrepWorker struct {
-	appRepo      *repository.ApplicationRepository
-	aiClient     aimodels.Provider
-	s3Client     *pkgs3.Client
-	asynqClient  *asynq.Client
-	buckets      S3Buckets
-	log          zerolog.Logger
+	appRepo     *repository.ApplicationRepository
+	aiClient    aimodels.Provider
+	s3Client    *pkgs3.Client
+	asynqClient *asynq.Client
+	buckets     S3Buckets
+	webhookSvc  *notification.WebhookService // nil-safe; no-ops when not configured
+	log         zerolog.Logger
 }
 
 // NewAIPrepWorker constructs an AIPrepWorker.
@@ -54,6 +56,13 @@ func NewAIPrepWorker(
 		buckets:     buckets,
 		log:         log,
 	}
+}
+
+// WithWebhookService attaches a WebhookService so AI-prep failures can be
+// reported to the user's Slack/Discord. webhookSvc may be nil — no-ops.
+func (w *AIPrepWorker) WithWebhookService(ws *notification.WebhookService) *AIPrepWorker {
+	w.webhookSvc = ws
+	return w
 }
 
 // ProcessTask implements asynq.HandlerFunc for TypeAIPrep tasks.
@@ -110,7 +119,9 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			Mode:           "keyword_inject",
 		})
 		if err != nil {
-			return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("tailor resume: %v", err))
+			errMsg := fmt.Sprintf("tailor resume: %v", err)
+			w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+			return w.failApp(ctx, p.ApplicationID, errMsg)
 		}
 		tailoredText = tailorResp.TailoredText
 
@@ -122,7 +133,9 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			Tone:           "professional",
 		})
 		if err != nil {
-			return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("generate cover letter: %v", err))
+			errMsg := fmt.Sprintf("generate cover letter: %v", err)
+			w.sendFailureWebhook(ctx, p.UserID, job.Title, job.Company, errMsg)
+			return w.failApp(ctx, p.ApplicationID, errMsg)
 		}
 		coverLetter = coverResp.CoverLetter
 
@@ -197,6 +210,32 @@ func (w *AIPrepWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 	log.Info().Msg("Stage 1: AI prep complete; Stage 2 enqueued")
 	return nil
+}
+
+// sendFailureWebhook fires an EventApplicationFailed webhook for the user.
+// Errors are silently ignored — the prep failure itself is already logged.
+func (w *AIPrepWorker) sendFailureWebhook(
+	ctx context.Context,
+	userID uuid.UUID,
+	jobTitle, company, errMsg string,
+) {
+	if w.webhookSvc == nil {
+		return
+	}
+	prefs, err := w.appRepo.GetPreferences(ctx, userID)
+	if err != nil || prefs == nil {
+		return
+	}
+	cfg := notification.WebhookConfig{
+		SlackURL:   prefs.SlackWebhookURL,
+		DiscordURL: prefs.DiscordWebhookURL,
+		Events:     toWebhookEvents(prefs.WebhookEvents),
+	}
+	w.webhookSvc.Send(ctx, cfg, notification.EventApplicationFailed, map[string]string{
+		"title":   jobTitle,
+		"company": company,
+		"error":   errMsg,
+	})
 }
 
 // failApp records an error on the application and returns the wrapped error.

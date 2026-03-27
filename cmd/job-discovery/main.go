@@ -16,6 +16,7 @@ import (
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
 	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
+	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	"github.com/bhata/AutoDreamApplier/pkg/config"
 	"github.com/bhata/AutoDreamApplier/pkg/database"
 	"github.com/bhata/AutoDreamApplier/pkg/logger"
@@ -84,6 +85,28 @@ func main() {
 
 	// Mount job discovery routes
 	r.Mount("/api/v1/jobs", discoveryHandler.Router())
+
+	// Start background embedding goroutine — generates job embeddings after each scrape cycle.
+	// Uses the configured AI service URL; gracefully skips if AI service is unavailable.
+	embClient := embedding.New(cfg.AI.ServiceURL)
+	go func() {
+		// Run immediately once, then every 5 minutes.
+		embedCtx := context.Background()
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		if err := jobSvc.EmbedNewJobs(embedCtx, embClient); err != nil {
+			log.Warn().Err(err).Msg("initial EmbedNewJobs failed")
+		}
+		for {
+			select {
+			case <-ticker.C:
+				if err := jobSvc.EmbedNewJobs(embedCtx, embClient); err != nil {
+					log.Warn().Err(err).Msg("EmbedNewJobs failed")
+				}
+			}
+		}
+	}()
 
 	// Start server
 	port := os.Getenv("JOB_DISCOVERY_PORT")

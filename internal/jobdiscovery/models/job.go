@@ -73,6 +73,9 @@ type ScrapedJob struct {
 	ATSType        ATSType // optional: set by scraper/service, detected from URL if empty
 	ApplyURL       string
 	PostedAt       *time.Time
+	// Scam detection fields — populated by the discovery service before DB insert.
+	IsScam    bool
+	ScamScore float64
 }
 
 // DiscoveryRun tracks a single scraping run for observability.

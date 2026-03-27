@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,8 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
-	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
+	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
+	"github.com/bhata/AutoDreamApplier/internal/notification"
 	usermodels "github.com/bhata/AutoDreamApplier/internal/user/models"
 )
 
@@ -190,12 +192,15 @@ func (r *ApplicationRepository) UpdateStatus(ctx context.Context, appID uuid.UUI
 }
 
 // UpdateOutcome records the post-submission outcome on an application.
-func (r *ApplicationRepository) UpdateOutcome(ctx context.Context, appID, userID uuid.UUID, outcome models.ApplicationOutcome) error {
+// notes is optional — pass an empty string to leave outcome_notes unchanged.
+func (r *ApplicationRepository) UpdateOutcome(ctx context.Context, appID, userID uuid.UUID, outcome models.ApplicationOutcome, notes string) error {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE applications
-		SET outcome = $1, outcome_updated_at = NOW()
+		SET outcome            = $1,
+		    outcome_updated_at = NOW(),
+		    outcome_notes      = CASE WHEN $4 = '' THEN outcome_notes ELSE $4 END
 		WHERE id = $2 AND user_id = $3`,
-		string(outcome), appID, userID,
+		string(outcome), appID, userID, notes,
 	)
 	if err != nil {
 		return fmt.Errorf("update outcome: %w", err)
@@ -349,14 +354,22 @@ func (r *ApplicationRepository) GetPrimaryResume(ctx context.Context, userID uui
 	var res usermodels.Resume
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, file_name, s3_key, raw_text, is_primary, interview_count, created_at
+		SELECT id, user_id, file_name, s3_key, raw_text, is_primary, interview_count,
+		       COALESCE(ab_enabled, false), COALESCE(ab_weight, 1),
+		       COALESCE(total_applications, 0), COALESCE(total_views, 0),
+		       COALESCE(total_interviews, 0), COALESCE(total_offers, 0),
+		       created_at
 		FROM resumes
 		WHERE user_id = $1 AND is_primary = true
 		LIMIT 1`,
 		userID,
 	).Scan(
 		&res.ID, &res.UserID, &res.FileName, &res.S3Key,
-		&res.RawText, &res.IsPrimary, &res.InterviewCount, &res.CreatedAt,
+		&res.RawText, &res.IsPrimary, &res.InterviewCount,
+		&res.AbEnabled, &res.AbWeight,
+		&res.TotalApplications, &res.TotalViews,
+		&res.TotalInterviews, &res.TotalOffers,
+		&res.CreatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -364,7 +377,75 @@ func (r *ApplicationRepository) GetPrimaryResume(ctx context.Context, userID uui
 		}
 		return nil, fmt.Errorf("get primary resume: %w", err)
 	}
+	if res.TotalApplications > 0 {
+		res.InterviewRate = float64(res.TotalInterviews) / float64(res.TotalApplications) * 100
+	}
 	return &res, nil
+}
+
+// GetABResume selects a resume for A/B testing using weighted random sampling.
+// If the user has any resumes with ab_enabled=true, pick one weighted by ab_weight.
+// Otherwise returns nil — the caller should fall back to GetPrimaryResume.
+func (r *ApplicationRepository) GetABResume(ctx context.Context, userID uuid.UUID) (*usermodels.Resume, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, user_id, file_name, s3_key, raw_text, is_primary, interview_count,
+		       COALESCE(ab_enabled, false), COALESCE(ab_weight, 1),
+		       COALESCE(total_applications, 0), COALESCE(total_views, 0),
+		       COALESCE(total_interviews, 0), COALESCE(total_offers, 0),
+		       created_at
+		FROM resumes
+		WHERE user_id = $1 AND COALESCE(ab_enabled, false) = true
+		ORDER BY ab_weight DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get ab resumes: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []usermodels.Resume
+	for rows.Next() {
+		var res usermodels.Resume
+		if err := rows.Scan(
+			&res.ID, &res.UserID, &res.FileName, &res.S3Key,
+			&res.RawText, &res.IsPrimary, &res.InterviewCount,
+			&res.AbEnabled, &res.AbWeight,
+			&res.TotalApplications, &res.TotalViews,
+			&res.TotalInterviews, &res.TotalOffers,
+			&res.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning ab resume: %w", err)
+		}
+		if res.TotalApplications > 0 {
+			res.InterviewRate = float64(res.TotalInterviews) / float64(res.TotalApplications) * 100
+		}
+		candidates = append(candidates, res)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating ab resumes: %w", err)
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(candidates) == 1 {
+		return &candidates[0], nil
+	}
+
+	// Weighted random selection
+	totalWeight := 0
+	for _, c := range candidates {
+		totalWeight += c.AbWeight
+	}
+	pick := rand.Intn(totalWeight)
+	cumulative := 0
+	for i, c := range candidates {
+		cumulative += c.AbWeight
+		if pick < cumulative {
+			return &candidates[i], nil
+		}
+	}
+	return &candidates[len(candidates)-1], nil
 }
 
 // GetResume fetches a resume by ID, scoped to the user.
@@ -372,19 +453,30 @@ func (r *ApplicationRepository) GetResume(ctx context.Context, resumeID, userID 
 	var res usermodels.Resume
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, file_name, s3_key, raw_text, is_primary, interview_count, created_at
+		SELECT id, user_id, file_name, s3_key, raw_text, is_primary, interview_count,
+		       COALESCE(ab_enabled, false), COALESCE(ab_weight, 1),
+		       COALESCE(total_applications, 0), COALESCE(total_views, 0),
+		       COALESCE(total_interviews, 0), COALESCE(total_offers, 0),
+		       created_at
 		FROM resumes
 		WHERE id = $1 AND user_id = $2`,
 		resumeID, userID,
 	).Scan(
 		&res.ID, &res.UserID, &res.FileName, &res.S3Key,
-		&res.RawText, &res.IsPrimary, &res.InterviewCount, &res.CreatedAt,
+		&res.RawText, &res.IsPrimary, &res.InterviewCount,
+		&res.AbEnabled, &res.AbWeight,
+		&res.TotalApplications, &res.TotalViews,
+		&res.TotalInterviews, &res.TotalOffers,
+		&res.CreatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get resume: %w", err)
+	}
+	if res.TotalApplications > 0 {
+		res.InterviewRate = float64(res.TotalInterviews) / float64(res.TotalApplications) * 100
 	}
 	return &res, nil
 }
@@ -455,6 +547,9 @@ func (r *ApplicationRepository) GetPreferences(ctx context.Context, userID uuid.
 		        COALESCE(apply_start_hour, 9),
 		        COALESCE(apply_end_hour, 17),
 		        COALESCE(apply_timezone, 'UTC'),
+		        COALESCE(slack_webhook_url, ''),
+		        COALESCE(discord_webhook_url, ''),
+		        COALESCE(webhook_events, '{}'),
 		        created_at, updated_at
 		 FROM user_preferences WHERE user_id = $1`, userID,
 	).Scan(
@@ -463,6 +558,7 @@ func (r *ApplicationRepository) GetPreferences(ctx context.Context, userID uuid.
 		&prefs.SalaryCurrency, &prefs.Exclusions, &prefs.AiTailorEnabled,
 		&prefs.AutoApplyEnabled, &prefs.DailyApplicationLimit,
 		&prefs.ApplyStartHour, &prefs.ApplyEndHour, &prefs.ApplyTimezone,
+		&prefs.SlackWebhookURL, &prefs.DiscordWebhookURL, &prefs.WebhookEvents,
 		&prefs.CreatedAt, &prefs.UpdatedAt,
 	)
 	if err != nil {
@@ -518,6 +614,115 @@ func (r *ApplicationRepository) GetAllActiveUsersForDigest(ctx context.Context) 
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("GetAllActiveUsersForDigest rows: %w", err)
+	}
+	return users, nil
+}
+
+// ── Follow-up helpers ─────────────────────────────────────────────────────────
+
+// GetApplicationsNeedingFollowUp returns applied applications for a user where
+// applied_at < now - followUpDays AND no follow-up event has been recorded yet.
+// Implements the notification.FollowUpRepository interface.
+func (r *ApplicationRepository) GetApplicationsNeedingFollowUp(
+	ctx context.Context,
+	userID uuid.UUID,
+	followUpDays int,
+) ([]notification.FollowUp, error) {
+	cutoff := time.Now().AddDate(0, 0, -followUpDays)
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			a.id,
+			j.title,
+			j.company,
+			a.applied_at,
+			EXTRACT(DAY FROM NOW() - a.applied_at)::int AS days_elapsed
+		FROM applications a
+		JOIN jobs j ON j.id = a.job_id
+		WHERE a.user_id   = $1
+		  AND a.status    = 'applied'
+		  AND a.outcome   IS NULL
+		  AND a.applied_at < $2
+		  AND NOT EXISTS (
+			  SELECT 1 FROM application_events ae
+			  WHERE ae.application_id = a.id
+			    AND ae.event_type IN ('follow_up_sent', 'follow_up_dismissed')
+		  )
+		ORDER BY a.applied_at ASC`,
+		userID, cutoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("GetApplicationsNeedingFollowUp query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []notification.FollowUp
+	for rows.Next() {
+		var fu notification.FollowUp
+		if err := rows.Scan(&fu.ApplicationID, &fu.JobTitle, &fu.Company, &fu.AppliedAt, &fu.DaysElapsed); err != nil {
+			return nil, fmt.Errorf("GetApplicationsNeedingFollowUp scan: %w", err)
+		}
+		results = append(results, fu)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetApplicationsNeedingFollowUp rows: %w", err)
+	}
+	return results, nil
+}
+
+// DismissFollowUp records a "follow_up_dismissed" event so the follow-up
+// doesn't recur for this application.
+// Implements the notification.FollowUpRepository interface.
+func (r *ApplicationRepository) DismissFollowUp(ctx context.Context, applicationID uuid.UUID, userID uuid.UUID) error {
+	// Verify the application belongs to the user before recording.
+	var ownerID uuid.UUID
+	err := r.pool.QueryRow(ctx,
+		`SELECT user_id FROM applications WHERE id = $1`, applicationID,
+	).Scan(&ownerID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return ErrNotFound
+		}
+		return fmt.Errorf("DismissFollowUp owner check: %w", err)
+	}
+	if ownerID != userID {
+		return fmt.Errorf("DismissFollowUp: application does not belong to user")
+	}
+
+	return r.RecordEvent(ctx, applicationID, "follow_up_dismissed", nil)
+}
+
+// MarkFollowUpSent records a "follow_up_sent" event on an application so the
+// scheduler doesn't resend the email.
+func (r *ApplicationRepository) MarkFollowUpSent(ctx context.Context, applicationID uuid.UUID) error {
+	return r.RecordEvent(ctx, applicationID, "follow_up_sent", nil)
+}
+
+// GetAllActiveUsersForFollowUp returns every active user's ID, email, and name.
+// Used by FollowUpScheduler to iterate all users for reminder checks.
+// Implements the notification.FollowUpUserRepo interface.
+func (r *ApplicationRepository) GetAllActiveUsersForFollowUp(ctx context.Context) ([]notification.FollowUpUser, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, email, full_name
+		 FROM users
+		 WHERE is_active = true
+		 ORDER BY created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllActiveUsersForFollowUp query: %w", err)
+	}
+	defer rows.Close()
+
+	var users []notification.FollowUpUser
+	for rows.Next() {
+		u := notification.FollowUpUser{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.FullName); err != nil {
+			return nil, fmt.Errorf("GetAllActiveUsersForFollowUp scan: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllActiveUsersForFollowUp rows: %w", err)
 	}
 	return users, nil
 }

@@ -1,7 +1,7 @@
 import re
 from fastapi import APIRouter, HTTPException
 from app.models import ResumeTailorRequest, ResumeTailorResponse
-from app.services import anthropic_client, prompt_builder
+from app.services import llm, prompt_builder
 
 router = APIRouter()
 
@@ -24,7 +24,7 @@ async def tailor_resume(req: ResumeTailorRequest):
         resume_text=req.resume_text,
     )
 
-    tailored = anthropic_client.complete(
+    tailored = llm.complete(
         prompt,
         max_tokens=3000,
         system=prompt_builder.RESUME_TAILOR_SYSTEM,

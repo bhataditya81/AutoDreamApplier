@@ -1,0 +1,116 @@
+# ── Data sources ───────────────────────────────────────────────────────────
+
+# Latest Amazon Linux 2023 ARM64 AMI
+data "aws_ami" "amazon_linux_2023_arm64" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-arm64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["arm64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Default VPC (Lambda runs without VPC; EC2 uses default VPC public subnet)
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default_public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# ── Security Group ─────────────────────────────────────────────────────────
+
+resource "aws_security_group" "browser_pool_ec2" {
+  name        = "${var.project_name}-browser-pool"
+  description = "Security group for apply-engine + browser-pool EC2"
+  vpc_id      = data.aws_vpc.default.id
+
+  # SSH access from admin IP only
+  ingress {
+    description = "SSH from admin"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_ssh_cidr]
+  }
+
+  # Apply-engine API (emergency stop) — restrict to known IPs in production
+  # TODO: Narrow this CIDR after setup, or use API key authentication
+  ingress {
+    description = "Apply engine API"
+    from_port   = 8084
+    to_port     = 8084
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # All outbound (to reach Neon DB, Upstash Redis, ATS portals, S3, ECR)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ── EC2 Instance ───────────────────────────────────────────────────────────
+
+resource "aws_instance" "browser_pool" {
+  ami                    = data.aws_ami.amazon_linux_2023_arm64.id
+  instance_type          = "t4g.nano"
+  key_name               = var.ec2_key_pair_name
+  vpc_security_group_ids = [aws_security_group.browser_pool_ec2.id]
+  subnet_id              = tolist(data.aws_subnets.default_public.ids)[0]
+  iam_instance_profile   = aws_iam_instance_profile.ec2.name
+
+  # Auto-assign public IP (no NAT needed)
+  associate_public_ip_address = true
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 30 # GB — AL2023 ARM64 AMI requires ≥ 30GB
+    encrypted   = true
+  }
+
+  user_data = base64encode(file("${path.module}/../../deployments/ec2/setup.sh"))
+
+  tags = {
+    Name = "${var.project_name}-browser-pool"
+  }
+
+  lifecycle {
+    # Don't replace instance on AMI update — use deploy.sh instead
+    ignore_changes = [ami, user_data]
+  }
+}
+
+# Elastic IP — stable address for Lambda env vars and SSH
+resource "aws_eip" "browser_pool" {
+  instance = aws_instance.browser_pool.id
+  domain   = "vpc"
+}
+
+output "ec2_public_ip" {
+  description = "Elastic IP of the browser pool EC2 instance"
+  value       = aws_eip.browser_pool.public_ip
+}
+
+output "ec2_ssh_command" {
+  description = "SSH command to access the EC2 instance"
+  value       = "ssh -i ~/.ssh/${var.ec2_key_pair_name}.pem ec2-user@${aws_eip.browser_pool.public_ip}"
+}

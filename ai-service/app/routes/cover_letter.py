@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.models import CoverLetterRequest, CoverLetterResponse
-from app.services import anthropic_client, prompt_builder
+from app.services import llm, prompt_builder
 
 router = APIRouter()
 
@@ -17,12 +17,12 @@ async def generate_cover_letter(req: CoverLetterRequest):
         job_description=req.job_description,
     )
 
-    cover_letter = anthropic_client.complete(prompt, max_tokens=800)
+    cover_letter = llm.complete(prompt, max_tokens=800)
 
     # Enforce word limit — retry once if exceeded
     word_count = len(cover_letter.split())
     if word_count > 400:
-        cover_letter = anthropic_client.complete(
+        cover_letter = llm.complete(
             prompt + "\n\nIMPORTANT: Keep it under 300 words.", max_tokens=600
         )
         word_count = len(cover_letter.split())

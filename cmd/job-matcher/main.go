@@ -12,8 +12,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/handler"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/repository"
+	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/scorer"
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/service"
 	"github.com/bhata/AutoDreamApplier/pkg/config"
 	"github.com/bhata/AutoDreamApplier/pkg/database"
@@ -49,6 +51,13 @@ func main() {
 	// Wire up dependencies
 	matchRepo := repository.New(pool, log)
 	matchSvc := service.New(pool, matchRepo, log)
+
+	// Attach semantic scorer using the configured AI service URL.
+	// If the AI service is down, the scorer falls back to 0.5 (neutral) — matching continues.
+	embClient := embedding.New(cfg.AI.ServiceURL)
+	semanticScorer := scorer.NewSemanticScorer(embClient)
+	matchSvc.WithSemanticScorer(semanticScorer)
+
 	matchHandler := handler.New(matchSvc, matchRepo, log)
 
 	// Setup router

@@ -6,6 +6,12 @@ import type { Match } from '@/lib/types';
 
 jest.mock('@/lib/auth', () => ({ getToken: jest.fn(() => 'test-token') }));
 
+// Stub the SalaryBenchmarkBadge so it never fires a fetch call during these tests.
+// The badge has its own dedicated test suite (salary-benchmark-badge.test.tsx).
+jest.mock('@/components/salary/salary-benchmark-badge', () => ({
+  SalaryBenchmarkBadge: () => null,
+}));
+
 // Radix Slot passes children as an array [false, element] when Button has a
 // loading spinner guard before children; React.Children.count sees count=2 and
 // throws. Replace Slot with a simple passthrough so asChild works in jsdom.
@@ -152,5 +158,56 @@ describe('MatchCard', () => {
     render(<MatchCard match={mockMatch} onUpdate={jest.fn()} />);
     expect(screen.getByRole('button', { name: /good match/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /poor match/i })).toBeInTheDocument();
+  });
+
+  it('renders salary range when both salaryMin and salaryMax are present', () => {
+    // mockMatch already has salaryMin: 120000 and salaryMax: 160000
+    render(<MatchCard match={mockMatch} onUpdate={jest.fn()} />);
+    expect(screen.getByText('$120k – $160k')).toBeInTheDocument();
+  });
+
+  it('renders "Salary not listed" when salaryMin and salaryMax are both absent', () => {
+    const matchWithoutSalary: Match = {
+      ...mockMatch,
+      job: {
+        ...mockMatch.job,
+        salaryMin: undefined,
+        salaryMax: undefined,
+      },
+    };
+    render(<MatchCard match={matchWithoutSalary} onUpdate={jest.fn()} />);
+    expect(screen.getByText('Salary not listed')).toBeInTheDocument();
+  });
+
+  it('renders job location when isRemote is false', () => {
+    const onsiteMatch: Match = {
+      ...mockMatch,
+      job: {
+        ...mockMatch.job,
+        isRemote: false,
+        location: 'New York, NY',
+      },
+    };
+    render(<MatchCard match={onsiteMatch} onUpdate={jest.fn()} />);
+    expect(screen.getByText('New York, NY')).toBeInTheDocument();
+  });
+
+  it('renders Potential Scam badge when job.isScam is true', () => {
+    const scamMatch: Match = {
+      ...mockMatch,
+      job: { ...mockMatch.job, isScam: true },
+    };
+    render(<MatchCard match={scamMatch} onUpdate={jest.fn()} />);
+    expect(screen.getByText('Potential Scam')).toBeInTheDocument();
+  });
+
+  it('calls onUpdate with rejected status after Skip', async () => {
+    const onUpdate = jest.fn();
+    mockFetch({ id: 'match-1', status: 'rejected' });
+    render(<MatchCard match={mockMatch} onUpdate={onUpdate} />);
+    await userEvent.click(screen.getByRole('button', { name: /skip/i }));
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith({ id: 'match-1', status: 'rejected' })
+    );
   });
 });

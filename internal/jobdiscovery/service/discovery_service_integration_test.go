@@ -2,15 +2,47 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
+	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
+	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
 	"github.com/bhata/AutoDreamApplier/internal/testhelper"
 	"github.com/google/uuid"
 )
+
+// ── Stub scrapers for service-level tests ─────────────────────────────────────
+
+// stubScraper is a minimal scrapers.Scraper that sends a fixed set of jobs.
+type stubScraper struct {
+	source discmodels.JobSource
+	jobs   []*discmodels.ScrapedJob
+	err    error // if non-nil, sent on the error channel before closing job channel
+}
+
+func (s *stubScraper) Source() discmodels.JobSource { return s.source }
+func (s *stubScraper) Name() string                 { return "stub-" + string(s.source) }
+
+func (s *stubScraper) Search(_ context.Context, _ scrapers.SearchParams) (<-chan *discmodels.ScrapedJob, <-chan error) {
+	jobCh := make(chan *discmodels.ScrapedJob, len(s.jobs))
+	errCh := make(chan error, 1)
+
+	go func() {
+		for _, j := range s.jobs {
+			jobCh <- j
+		}
+		close(jobCh)
+		if s.err != nil {
+			errCh <- s.err
+		}
+		close(errCh)
+	}()
+	return jobCh, errCh
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -295,5 +327,130 @@ func TestJobRepository_Upsert_RespectsContextCancel(t *testing.T) {
 	_, _, err := repo.Upsert(ctx, job)
 	if err == nil {
 		t.Error("expected error with cancelled context; got nil")
+	}
+}
+
+// ── DiscoveryService RunSingle via stub scraper ───────────────────────────────
+
+// TestDiscoveryService_ScamJobDetected_IsScamSetBeforeStorage verifies that
+// when a scraper returns a job that triggers scam detection, the job stored in
+// the DB has is_scam=true (set by the discovery service before BulkUpsert).
+func TestDiscoveryService_ScamJobDetected_IsScamSetBeforeStorage(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+	repo := discrepo.NewJobRepository(pool)
+
+	base := uuid.New().String()
+	extID := "scam-svc-" + base
+
+	salaryVal := 500001 // Signal 1: suspiciously high salary
+	scamJob := &discmodels.ScrapedJob{
+		ExternalID:  extID,
+		Source:      discmodels.SourceIndeed,
+		URL:         "http://totally-scam-domain.biz/job",
+		Title:       "work from home earn easy money",
+		Company:     "",
+		Description: "Pay to apply today. Send $99 training fee. Contact scammer@gmail.com. Unlimited earning. Passive income. Be your own boss. Ground floor MLM opportunity.",
+		ATSType:     discmodels.ATSUnknown,
+		ApplyURL:    "http://totally-scam-domain.biz/apply",
+		SalaryMin:   &salaryVal,
+	}
+
+	stub := &stubScraper{
+		source: discmodels.SourceIndeed,
+		jobs:   []*discmodels.ScrapedJob{scamJob},
+	}
+
+	svc := discsvc.NewDiscoveryService(repo, testhelper.NopLogger(), stub)
+	result := svc.RunSingle(ctx, discmodels.SourceIndeed, discsvc.DiscoverParams{
+		Keywords: []string{"engineer"},
+		MaxPages: 1,
+	})
+	if result.Err != nil {
+		t.Fatalf("RunSingle: %v", result.Err)
+	}
+
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM jobs WHERE external_id = $1`, extID) //nolint:errcheck
+	})
+
+	// Verify the job is stored with is_scam = true.
+	var isScam bool
+	if err := pool.QueryRow(ctx, `SELECT is_scam FROM jobs WHERE external_id = $1`, extID).Scan(&isScam); err != nil {
+		t.Fatalf("query is_scam: %v", err)
+	}
+	if !isScam {
+		t.Error("expected is_scam=true for scam job; got false")
+	}
+}
+
+// TestDiscoveryService_EmptyResults_NoDBWrites verifies that when a scraper
+// returns no jobs, the discovery service performs no DB writes.
+func TestDiscoveryService_EmptyResults_NoDBWrites(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+	repo := discrepo.NewJobRepository(pool)
+
+	// Count jobs before the run.
+	var beforeCount int
+	pool.QueryRow(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&beforeCount) //nolint:errcheck
+
+	stub := &stubScraper{
+		source: discmodels.SourceZipRecruiter,
+		jobs:   nil, // no jobs
+	}
+
+	svc := discsvc.NewDiscoveryService(repo, testhelper.NopLogger(), stub)
+	result := svc.RunSingle(ctx, discmodels.SourceZipRecruiter, discsvc.DiscoverParams{
+		Keywords: []string{"engineer"},
+		MaxPages: 1,
+	})
+	if result.Err != nil {
+		t.Fatalf("RunSingle: %v", result.Err)
+	}
+
+	if result.JobsNew != 0 {
+		t.Errorf("JobsNew = %d; want 0 when scraper returns no jobs", result.JobsNew)
+	}
+	if result.JobsDupe != 0 {
+		t.Errorf("JobsDupe = %d; want 0 when scraper returns no jobs", result.JobsDupe)
+	}
+
+	// Total jobs in DB must be unchanged.
+	var afterCount int
+	pool.QueryRow(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&afterCount) //nolint:errcheck
+	if afterCount != beforeCount {
+		t.Errorf("job count changed from %d to %d; expected no writes", beforeCount, afterCount)
+	}
+}
+
+// TestDiscoveryService_ScraperError_OtherScrapersStillRun verifies that when
+// one scraper emits an error, the result captures it but the service continues
+// (other scrapers in RunAll would still run; here we verify a single erroring
+// scraper still produces a completed (non-nil) result with Err set).
+func TestDiscoveryService_ScraperError_ResultHasErr(t *testing.T) {
+	pool := testhelper.NewTestPool(t)
+	ctx := context.Background()
+	repo := discrepo.NewJobRepository(pool)
+
+	stub := &stubScraper{
+		source: discmodels.SourceGlassdoor,
+		jobs:   nil,
+		err:    errors.New("network timeout from glassdoor"),
+	}
+
+	svc := discsvc.NewDiscoveryService(repo, testhelper.NopLogger(), stub)
+	result := svc.RunSingle(ctx, discmodels.SourceGlassdoor, discsvc.DiscoverParams{
+		Keywords: []string{"engineer"},
+		MaxPages: 1,
+	})
+
+	// The service logs the error as non-fatal; it surfaces via result.Err.
+	if result.Err == nil {
+		t.Error("expected result.Err to be set when scraper emits an error; got nil")
+	}
+	// Source field must reflect the scraper that ran.
+	if result.Source != discmodels.SourceGlassdoor {
+		t.Errorf("result.Source = %q; want %q", result.Source, discmodels.SourceGlassdoor)
 	}
 }

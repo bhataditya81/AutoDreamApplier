@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.models import FormQARequest, FormQAResponse
-from app.services import anthropic_client, prompt_builder
+from app.services import llm, prompt_builder
 
 router = APIRouter()
 
@@ -38,6 +38,6 @@ async def answer_form_question(req: FormQARequest):
         options_str=options_str,
     )
 
-    answer = anthropic_client.complete(prompt, max_tokens=300)
+    answer = llm.complete(prompt, max_tokens=300)
 
     return FormQAResponse(answer=answer.strip(), confidence=0.75)

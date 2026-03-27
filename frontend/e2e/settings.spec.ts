@@ -65,13 +65,13 @@ authTest.describe('Settings page', () => {
 
   authTest('renders Preferences section', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/settings');
-    await expect(page.getByText('Job Preferences')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Job Preferences' })).toBeVisible();
   });
 
   authTest('renders Credentials section', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/settings');
     // Credentials form has a heading
-    await expect(page.getByText(/board credentials/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /board credentials/i })).toBeVisible();
   });
 
   authTest('renders Notifications section', async ({ authenticatedPage: page }) => {
@@ -116,6 +116,72 @@ authTest.describe('Settings page', () => {
 
   authTest('Profile form shows user email', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/settings');
-    await expect(page.getByDisplayValue('jane@example.com')).toBeVisible();
+    await expect(page.locator('input[disabled]')).toHaveValue('jane@example.com');
+  });
+
+  authTest('editing Full Name and clicking Save triggers PATCH request', async ({ authenticatedPage: page }) => {
+    let patchCalled = false;
+    await page.route('**/api/v1/users/me', (route) => {
+      if (route.request().method() === 'PATCH') {
+        patchCalled = true;
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...mockUser, fullName: 'Jane Updated' }),
+        });
+      } else {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockUser),
+        });
+      }
+    });
+
+    await page.goto('/dashboard/settings');
+    // Wait for form to hydrate — email value is visible
+    await expect(page.locator('input[disabled]')).toHaveValue('jane@example.com');
+
+    // Edit the Full Name field (first text input in the profile form)
+    const fullNameInput = page.getByPlaceholder(/jane smith/i);
+    await fullNameInput.fill('Jane Updated');
+
+    // Click Save (Profile & Apply Settings save button)
+    const saveButtons = page.getByRole('button', { name: /save/i });
+    await saveButtons.first().click();
+
+    await expect.poll(() => patchCalled).toBe(true);
+  });
+
+  authTest('shows success message or toast after saving profile', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/users/me', (route) => {
+      if (route.request().method() === 'PATCH') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...mockUser, fullName: 'Jane Updated' }),
+        });
+      } else {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockUser),
+        });
+      }
+    });
+
+    await page.goto('/dashboard/settings');
+    await expect(page.locator('input[disabled]')).toHaveValue('jane@example.com');
+
+    const fullNameInput = page.getByPlaceholder(/jane smith/i);
+    await fullNameInput.fill('Jane Updated');
+
+    const saveButtons = page.getByRole('button', { name: /save/i });
+    await saveButtons.first().click();
+
+    // Expect a success indicator — either a toast, an alert, or text containing "saved"
+    await expect(
+      page.getByText(/saved|success|updated/i).first()
+    ).toBeVisible({ timeout: 5000 });
   });
 });

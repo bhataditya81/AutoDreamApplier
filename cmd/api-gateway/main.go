@@ -17,6 +17,9 @@ import (
 	"github.com/bhata/AutoDreamApplier/internal/browser"
 	"github.com/bhata/AutoDreamApplier/internal/notification"
 
+	analyticshandler "github.com/bhata/AutoDreamApplier/internal/analytics"
+	"github.com/bhata/AutoDreamApplier/internal/salary"
+
 	apphandler "github.com/bhata/AutoDreamApplier/internal/application/handler"
 	apprepo "github.com/bhata/AutoDreamApplier/internal/application/repository"
 	appsvc "github.com/bhata/AutoDreamApplier/internal/application/service"
@@ -70,11 +73,8 @@ func main() {
 	defer pkgredis.Close(redisClient)
 
 	// Initialize Asynq client (task queue backed by Redis)
-	asynqClient := asynq.NewClient(asynq.RedisClientOpt{
-		Addr:     cfg.Redis.Addr(),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
+	// AsynqOpt() automatically enables TLS for rediss:// URLs (e.g. Upstash).
+	asynqClient := asynq.NewClient(cfg.Redis.AsynqOpt())
 	defer asynqClient.Close()
 
 	// Initialize S3
@@ -93,6 +93,9 @@ func main() {
 	userRepo := repository.NewUserRepository(dbPool, log)
 	appRepo := apprepo.New(dbPool, log)
 	mRepo := matchrepo.New(dbPool, log)
+	analyticsRepo := analyticshandler.New(dbPool, log)
+	salaryRepo := salary.NewRepository(dbPool, log)
+	salarySvc := salary.NewService(salaryRepo, redisClient, log)
 
 	// ── External service clients ───────────────────────────────────────────────
 	browserClient := browser.New(cfg.Browser.PoolURL, log)
@@ -109,6 +112,11 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to initialize notification client")
 	}
+
+	// ── Follow-up scheduler ────────────────────────────────────────────────────
+	followUpSvc := notification.NewFollowUpService(appRepo, log)
+	followUpScheduler := notification.NewFollowUpScheduler(followUpSvc, appRepo, notifClient, log)
+	go followUpScheduler.Run(ctx)
 
 	// ── Services ──────────────────────────────────────────────────────────────
 	appService := appsvc.New(appRepo, asynqClient, browserClient, notifClient, log)
@@ -166,14 +174,21 @@ func main() {
 			r.Route("/matches", mHandler.Routes)
 
 			// Application routes – submit, list, outcome tracking, emergency stop
-			r.Mount("/applications", apphandler.Router(appService, log))
+			r.Mount("/applications", apphandler.New(appService, log).WithUserResolver(userRepo).Routes())
+
+			// Analytics routes – funnel, over-time, by-resume, top-companies
+			r.Mount("/analytics", analyticshandler.NewHandler(analyticsRepo, log).WithUserResolver(userRepo).Routes())
+
+			// Salary benchmarking routes
+			r.Mount("/salary", salary.NewHandler(salarySvc, log).Routes())
 
 			// Note: /jobs is served by the job-discovery service on :8082
 		})
 	})
 
-	// redisClient is retained for future rate-limiter / cache middleware.
-	_ = redisClient
+	// redisClient is used by salary service; suppress unused-variable warning if
+	// salary service is the only consumer.
+	_ = salarySvc
 
 	// Start server
 	srv := &http.Server{

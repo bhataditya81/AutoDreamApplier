@@ -63,6 +63,7 @@ func (h *UserHandler) Routes() chi.Router {
 	r.Get("/me/resumes", h.ListResumes)
 	r.Post("/me/resumes", h.UploadResume)
 	r.Put("/me/resumes/{resumeID}/primary", h.SetPrimaryResume)
+	r.Put("/me/resumes/{resumeID}/ab-test", h.UpdateResumeAB)
 	r.Delete("/me/resumes/{resumeID}", h.DeleteResume)
 	r.Get("/me/dashboard", h.GetDashboard)
 	r.Post("/me/credentials", h.SaveBoardCredentials)
@@ -390,6 +391,67 @@ func (h *UserHandler) DeleteResume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// updateResumeABRequest is the request body for PUT /me/resumes/{resumeID}/ab-test.
+type updateResumeABRequest struct {
+	AbEnabled bool `json:"abEnabled"`
+	AbWeight  int  `json:"abWeight"`
+}
+
+// UpdateResumeAB enables or disables A/B testing for a specific resume and sets its weight.
+func (h *UserHandler) UpdateResumeAB(w http.ResponseWriter, r *http.Request) {
+	user, err := h.getCurrentUser(r)
+	if err != nil {
+		response.Unauthorized(w, "not authenticated")
+		return
+	}
+
+	resumeIDStr := chi.URLParam(r, "resumeID")
+	resumeID, err := uuid.Parse(resumeIDStr)
+	if err != nil {
+		response.BadRequest(w, "invalid resume ID")
+		return
+	}
+
+	var req updateResumeABRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "invalid request body")
+		return
+	}
+
+	if req.AbWeight < 1 || req.AbWeight > 10 {
+		response.BadRequest(w, "abWeight must be between 1 and 10")
+		return
+	}
+
+	if err := h.repo.UpdateResumeAB(r.Context(), resumeID, user.ID, req.AbEnabled, req.AbWeight); err != nil {
+		if err.Error() == "resume not found" {
+			response.NotFound(w, "resume not found")
+			return
+		}
+		h.log.Error().Err(err).Msg("error updating resume A/B settings")
+		response.InternalError(w, "failed to update A/B settings")
+		return
+	}
+
+	// Return updated resume list so the client can refresh
+	resumes, err := h.repo.GetResumes(r.Context(), user.ID)
+	if err != nil {
+		h.log.Error().Err(err).Msg("error fetching resumes after AB update")
+		response.InternalError(w, "failed to retrieve updated resumes")
+		return
+	}
+
+	// Find and return the updated resume
+	for _, res := range resumes {
+		if res.ID == resumeID {
+			response.JSON(w, http.StatusOK, res)
+			return
+		}
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "A/B settings updated"})
 }
 
 // saveBoardCredentialsRequest is the request body for POST /me/credentials.

@@ -22,7 +22,7 @@ dev:
 	docker compose up --build
 
 docker-up:
-	docker compose up -d postgres redis minio
+	docker compose up -d postgres redis minio minio-setup db-migrator
 
 docker-down:
 	docker compose down -v

@@ -1,9 +1,10 @@
 // Package handler provides HTTP handlers for the Application Engine API.
-// All endpoints are internal-service facing; caller passes user_id explicitly
-// (the API Gateway validates the JWT and forwards the claim downstream).
+// Endpoints are mounted behind the API Gateway's JWT middleware; user identity
+// is resolved from the JWT context via the auth package.
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,12 +16,20 @@ import (
 
 	"github.com/bhata/AutoDreamApplier/internal/application/models"
 	"github.com/bhata/AutoDreamApplier/internal/application/service"
+	"github.com/bhata/AutoDreamApplier/internal/auth"
 )
+
+// UserResolver converts a Cognito subject string (e.g. "dev:alice@example.com")
+// to a database user UUID. Implemented by UserRepository.GetByCognitoSub.
+type UserResolver interface {
+	GetUserIDBySub(ctx context.Context, sub string) (uuid.UUID, error)
+}
 
 // Handler holds dependencies for the application HTTP handlers.
 type Handler struct {
-	svc *service.Service
-	log zerolog.Logger
+	svc      *service.Service
+	log      zerolog.Logger
+	resolver UserResolver // may be nil (falls back to query-param user_id)
 }
 
 // New creates a new Handler.
@@ -28,20 +37,46 @@ func New(svc *service.Service, log zerolog.Logger) *Handler {
 	return &Handler{svc: svc, log: log}
 }
 
-// Router returns a Chi sub-router wired to all application endpoints.
-// Mount this at a prefix such as /api/v1/applications in main.go.
-func Router(svc *service.Service, log zerolog.Logger) http.Handler {
-	h := New(svc, log)
+// WithUserResolver attaches a UserResolver so handlers can derive the user UUID
+// from the JWT context rather than requiring an explicit user_id query param.
+func (h *Handler) WithUserResolver(r UserResolver) *Handler {
+	h.resolver = r
+	return h
+}
+
+// getUserID resolves the authenticated user's UUID. It first tries the JWT
+// context (preferred), then falls back to the supplied fallback string (e.g.
+// from a query param or request body). Returns an error if neither works.
+func (h *Handler) getUserID(r *http.Request, fallback string) (uuid.UUID, error) {
+	if h.resolver != nil {
+		if claims, ok := auth.GetUserFromContext(r.Context()); ok && claims.Sub != "" {
+			id, err := h.resolver.GetUserIDBySub(r.Context(), claims.Sub)
+			if err == nil {
+				return id, nil
+			}
+		}
+	}
+	return uuid.Parse(fallback)
+}
+
+// Routes returns a Chi sub-router wired to all application endpoints.
+func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Post("/submit", h.Submit)
 	r.Get("/stats", h.Stats)          // registered before /{appID} for clarity
 	r.Get("/", h.List)
 	r.Get("/{appID}", h.GetByID)
-	r.Put("/{appID}/outcome", h.RecordOutcome)
+	r.Put("/{appID}/outcome", h.RecordOutcome)   // REST: full replace
+	r.Patch("/{appID}/outcome", h.RecordOutcome) // REST: partial update (frontend uses PATCH)
 	r.Post("/emergency-stop", h.EmergencyStop)
 
 	return r
+}
+
+// Router is kept for backward compatibility (e.g. apply-engine internal use).
+func Router(svc *service.Service, log zerolog.Logger) http.Handler {
+	return New(svc, log).Routes()
 }
 
 // ── Local request types ───────────────────────────────────────────────────────
@@ -51,6 +86,7 @@ func Router(svc *service.Service, log zerolog.Logger) http.Handler {
 type outcomeBody struct {
 	UserID  string `json:"user_id"`
 	Outcome string `json:"outcome"`
+	Notes   string `json:"notes,omitempty"` // optional; stored in outcome_notes
 }
 
 type emergencyStopBody struct {
@@ -141,7 +177,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	userID, err := uuid.Parse(q.Get("user_id"))
+	userID, err := h.getUserID(r, q.Get("user_id"))
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return
@@ -217,7 +253,7 @@ func (h *Handler) RecordOutcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.RecordOutcome(r.Context(), appID, userID, outcome); err != nil {
+	if err := h.svc.RecordOutcome(r.Context(), appID, userID, outcome, req.Notes); err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			jsonError(w, http.StatusNotFound, "application not found")
 			return
@@ -237,12 +273,10 @@ func (h *Handler) RecordOutcome(w http.ResponseWriter, r *http.Request) {
 // Response 200: { "status": "ok" }
 func (h *Handler) EmergencyStop(w http.ResponseWriter, r *http.Request) {
 	var req emergencyStopBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
+	// Body is optional when user_id can be resolved from JWT context.
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	userID, err := uuid.Parse(req.UserID)
+	userID, err := h.getUserID(r, req.UserID)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return
@@ -262,7 +296,7 @@ func (h *Handler) EmergencyStop(w http.ResponseWriter, r *http.Request) {
 // GET /stats?user_id=...
 // Response 200: { "counts": { "queued": N, "applied": N, ... } }
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
-	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	userID, err := h.getUserID(r, r.URL.Query().Get("user_id"))
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return

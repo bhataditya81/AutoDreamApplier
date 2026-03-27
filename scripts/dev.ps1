@@ -60,10 +60,24 @@ function Assert-Command {
     }
 }
 
-Assert-Command "docker"         "Install Docker Desktop: https://docs.docker.com/get-docker/"
-Assert-Command "docker-compose" "Included with Docker Desktop"
-Assert-Command "node"           "Install Node.js >= 18: https://nodejs.org"
-Assert-Command "npm"            "Included with Node.js"
+Assert-Command "docker" "Install Docker Desktop: https://docs.docker.com/get-docker/"
+Assert-Command "node"   "Install Node.js >= 18: https://nodejs.org"
+Assert-Command "npm"    "Included with Node.js"
+
+# Resolve docker compose command — prefer v2 plugin, fall back to v1 binary
+$DC = $null
+$null = docker compose version 2>$null
+if ($LASTEXITCODE -eq 0) {
+    $DC = "docker compose"
+    Write-Ok "docker compose (v2)"
+} elseif (Get-Command "docker-compose" -ErrorAction SilentlyContinue) {
+    $DC = "docker-compose"
+    Write-Ok "docker-compose (v1)"
+} else {
+    Write-Err "Neither 'docker compose' nor 'docker-compose' found."
+    Write-Info "Upgrade Docker Desktop: https://docs.docker.com/compose/install/"
+    exit 1
+}
 
 $HasMigrate = $false
 if (Get-Command "migrate" -ErrorAction SilentlyContinue) {
@@ -116,14 +130,14 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $NoBuild) {
     Write-Info "Building images and starting containers (first run: 3-5 min)..."
-    docker-compose up --build -d
+    Invoke-Expression "$DC up --build -d"
 } else {
     Write-Info "Starting containers with cached images..."
-    docker-compose up -d
+    Invoke-Expression "$DC up -d"
 }
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "docker-compose failed. See output above."
+    Write-Err "docker compose failed. See output above."
     exit 1
 }
 Write-Ok "All containers started"
@@ -138,13 +152,13 @@ $Waited  = 0
 Write-Host "  Polling postgres" -NoNewline
 
 while ($true) {
-    $null = docker-compose exec -T postgres pg_isready -U autodream -d autodreamapplier 2>$null
+    $null = Invoke-Expression "$DC exec -T postgres pg_isready -U autodream -d autodreamapplier" 2>$null
     if ($LASTEXITCODE -eq 0) { break }
 
     if ($Waited -ge $MaxWait) {
         Write-Host ""
         Write-Err "PostgreSQL not ready after ${MaxWait}s"
-        Write-Info "Tip: docker-compose logs postgres"
+        Write-Info "Tip: $DC logs postgres"
         exit 1
     }
 
@@ -190,8 +204,8 @@ if ($NoFrontend) {
     Write-Host "    AI Service   -> http://localhost:8081"
     Write-Host "    MinIO UI     -> http://localhost:9001  (minioadmin / minioadmin)"
     Write-Host ""
-    Write-Host "  Stop backend : docker-compose down" -ForegroundColor Yellow
-    Write-Host "  Wipe volumes : docker-compose down -v" -ForegroundColor Yellow
+    Write-Host "  Stop backend : $DC down" -ForegroundColor Yellow
+    Write-Host "  Wipe volumes : $DC down -v" -ForegroundColor Yellow
     exit 0
 }
 
@@ -216,8 +230,8 @@ Write-Host "    AI Service   -> http://localhost:8081" -ForegroundColor Cyan
 Write-Host "    MinIO UI     -> http://localhost:9001  (minioadmin / minioadmin)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Ctrl+C stops the frontend. Backend keeps running in Docker." -ForegroundColor Yellow
-Write-Host "  Stop everything : docker-compose down" -ForegroundColor Yellow
-Write-Host "  Wipe all data   : docker-compose down -v" -ForegroundColor Yellow
+Write-Host "  Stop everything : $DC down" -ForegroundColor Yellow
+Write-Host "  Wipe all data   : $DC down -v" -ForegroundColor Yellow
 Write-Host ""
 
 npm --prefix frontend run dev

@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
@@ -11,12 +12,17 @@ import (
 )
 
 // NewClient creates a new Redis client.
+// TLS is automatically enabled when cfg.TLS is true (set by rediss:// URL scheme).
 func NewClient(ctx context.Context, cfg config.RedisConfig, log zerolog.Logger) (*redis.Client, error) {
-	client := redis.NewClient(&redis.Options{
+	opts := &redis.Options{
 		Addr:     cfg.Addr(),
 		Password: cfg.Password,
 		DB:       cfg.DB,
-	})
+	}
+	if cfg.TLS {
+		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	client := redis.NewClient(opts)
 
 	// Verify connection
 	if err := client.Ping(ctx).Err(); err != nil {

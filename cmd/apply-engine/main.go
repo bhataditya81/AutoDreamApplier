@@ -107,11 +107,8 @@ func main() {
 	// ── Redis / Asynq ─────────────────────────────────────────────────────────
 	// redisOpt is shared between the Asynq producer (client) and consumer (server)
 	// so both always connect to the same Redis instance.
-	redisOpt := asynq.RedisClientOpt{
-		Addr:     cfg.Redis.Addr(),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	}
+	// AsynqOpt() automatically enables TLS for rediss:// URLs (e.g. Upstash).
+	redisOpt := cfg.Redis.AsynqOpt()
 
 	asynqClient := asynq.NewClient(redisOpt)
 	defer asynqClient.Close()
@@ -142,13 +139,18 @@ func main() {
 	// Generic fallback MUST be registered last — it matches any URL.
 	atsRegistry.Register(atsplugins.NewGenericPlugin(browserClient, log))
 
+	// ── Webhook notifications (Slack / Discord) ───────────────────────────────
+	// WebhookService is always created; it no-ops when the user hasn't
+	// configured any webhook URLs in their preferences.
+	webhookSvc := notification.NewWebhookService(log)
+
 	// ── Task workers ──────────────────────────────────────────────────────────
 	aiPrepWorker := workers.NewAIPrepWorker(
 		repo, aiClient, s3Client, asynqClient, buckets, log,
-	)
+	).WithWebhookService(webhookSvc)
 	browserApplyWorker := workers.NewBrowserApplyWorker(
 		repo, browserClient, s3Client, buckets, atsRegistry, notifier, log,
-	)
+	).WithWebhookService(webhookSvc, cfg.SES.DashboardURL)
 
 	// ── Service & HTTP handler ────────────────────────────────────────────────
 	svc := service.New(repo, asynqClient, browserClient, notifier, log)

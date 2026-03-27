@@ -1,10 +1,15 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/hibiken/asynq"
 )
 
 // Config holds all application configuration.
@@ -53,10 +58,26 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+	TLS      bool // true when REDIS_URL uses rediss:// scheme (e.g. Upstash)
 }
 
 func (c RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", c.Host, c.Port)
+}
+
+// AsynqOpt returns an Asynq RedisClientOpt with TLS enabled when required.
+// Use this instead of constructing asynq.RedisClientOpt inline so TLS is
+// always consistent with the REDIS_URL scheme (rediss:// → TLS).
+func (c RedisConfig) AsynqOpt() asynq.RedisClientOpt {
+	opt := asynq.RedisClientOpt{
+		Addr:     c.Addr(),
+		Password: c.Password,
+		DB:       c.DB,
+	}
+	if c.TLS {
+		opt.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	return opt
 }
 
 type AWSConfig struct {
@@ -106,8 +127,10 @@ type RateLimitConfig struct {
 }
 
 // Load reads configuration from environment variables.
+// DATABASE_URL and REDIS_URL (if set) override individual component vars,
+// allowing cloud deployments to pass a single connection string.
 func Load() *Config {
-	return &Config{
+	cfg := &Config{
 		App: AppConfig{
 			Env:           getEnv("APP_ENV", "development"),
 			Port:          getEnv("APP_PORT", "8080"),
@@ -171,6 +194,60 @@ func Load() *Config {
 			Glassdoor: getEnvInt("RATE_LIMIT_GLASSDOOR", 8),
 			LinkedIn:  getEnvInt("RATE_LIMIT_LINKEDIN", 3),
 		},
+	}
+
+	// DATABASE_URL / REDIS_URL override individual component vars when present.
+	applyURLOverrides(cfg)
+	return cfg
+}
+
+// applyURLOverrides parses DATABASE_URL and REDIS_URL (if set) and overrides
+// the individual component fields. This allows Terraform / cloud deployments to
+// pass a single connection string while local dev continues to use individual vars.
+func applyURLOverrides(cfg *Config) {
+	// DATABASE_URL: postgres://user:pass@host:5432/dbname?sslmode=require
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		if u, err := url.Parse(dbURL); err == nil {
+			if h := u.Hostname(); h != "" {
+				cfg.DB.Host = h
+			}
+			if p := u.Port(); p != "" {
+				cfg.DB.Port = p
+			}
+			if u.User != nil {
+				cfg.DB.User = u.User.Username()
+				if pass, ok := u.User.Password(); ok {
+					cfg.DB.Password = pass
+				}
+			}
+			if name := strings.TrimPrefix(u.Path, "/"); name != "" {
+				cfg.DB.Name = name
+			}
+			if ssl := u.Query().Get("sslmode"); ssl != "" {
+				cfg.DB.SSLMode = ssl
+			} else if u.Scheme != "postgres" {
+				cfg.DB.SSLMode = "require" // default for cloud DBs
+			}
+		}
+	}
+
+	// REDIS_URL: redis://default:pass@host:6379  OR  rediss://... (TLS)
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		if u, err := url.Parse(redisURL); err == nil {
+			if h := u.Hostname(); h != "" {
+				cfg.Redis.Host = h
+			}
+			if p := u.Port(); p != "" {
+				cfg.Redis.Port = p
+			}
+			if u.User != nil {
+				if pass, ok := u.User.Password(); ok && pass != "" {
+					cfg.Redis.Password = pass
+				}
+			}
+			// rediss:// scheme signals TLS required (e.g. Upstash)
+			cfg.Redis.TLS = u.Scheme == "rediss"
+		}
 	}
 }
 

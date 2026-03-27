@@ -7,6 +7,20 @@
 .gemini
 .claude
 
+# Compiled service binaries at root (from go build ./...)
+/api-gateway
+/api-gateway.exe
+/apply-engine
+/apply-engine.exe
+/job-discovery
+/job-discovery.exe
+/job-matcher
+/job-matcher.exe
+/browser-pool
+/browser-pool.exe
+/followup-scheduler
+/followup-scheduler.exe
+
 # Build artifacts and binaries
 bin/
 build/
@@ -21,18 +35,30 @@ dist/
 # Go dependency cache
 vendor/
 
-# Node & Frontend
+# Frontend — not needed by Go builds (39MB+ savings)
+frontend/
+
+# Python AI service — not needed by Go builds (39MB savings)
+ai-service/
+
+# Infrastructure / Terraform — not needed by Go builds
+infra/
+
+# Migrations — handled separately, not in Go binary
+migrations/
+
+# Scripts
+scripts/
+
+# Node & Frontend (belt-and-suspenders for nested node_modules)
 node_modules/
-frontend/node_modules/
 .next/
-frontend/.next/
 out/
-frontend/out/
 npm-debug.log
 yarn-error.log
 pnpm-debug.log*
 
-# Python & AI Service
+# Python cache
 __pycache__/
 *.pyc
 *.pyo

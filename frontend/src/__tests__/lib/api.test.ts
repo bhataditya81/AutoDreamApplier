@@ -374,6 +374,49 @@ describe('saveBoardCredentials', () => {
   });
 });
 
+// ── Auth header on every call ─────────────────────────────────────────────────
+
+describe('auth header', () => {
+  it('includes Authorization: Bearer token on protected calls', async () => {
+    const spy = mockFetch({ data: [], total: 0, page: 1, pageSize: 20, hasMore: false });
+    await listApplications();
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('/applications'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
+      })
+    );
+  });
+});
+
+// ── Network error propagation ──────────────────────────────────────────────────
+
+describe('network error', () => {
+  it('propagates when fetch throws (e.g. offline)', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('Failed to fetch'));
+    await expect(listMatches()).rejects.toThrow('Failed to fetch');
+  });
+});
+
+// ── listApplications query params ─────────────────────────────────────────────
+
+describe('listApplications query params', () => {
+  it('appends status and page query params to the URL', async () => {
+    const spy = mockFetch({ data: [], total: 0, page: 2, pageSize: 20, hasMore: false });
+    await listApplications({ status: 'applied', page: 2 });
+    const url = (spy.mock.calls[0] as [string])[0];
+    expect(url).toContain('status=applied');
+    expect(url).toContain('page=2');
+  });
+
+  it('calls /api/v1/applications without params when none provided', async () => {
+    const spy = mockFetch({ data: [], total: 0, page: 1, pageSize: 20, hasMore: false });
+    await listApplications();
+    const url = (spy.mock.calls[0] as [string])[0];
+    expect(url).toMatch(/\/api\/v1\/applications$/);
+  });
+});
+
 // ── getDashboardStats ─────────────────────────────────────────────────────────
 
 describe('getDashboardStats', () => {

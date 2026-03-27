@@ -1,0 +1,641 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1774092191954" clover="3.2.0">
+  <project timestamp="1774092191955" name="All files">
+    <metrics statements="560" coveredstatements="456" conditionals="414" coveredconditionals="322" methods="147" coveredmethods="91" elements="1121" coveredelements="869" complexity="0" loc="560" ncloc="560" packages="6" files="19" classes="19"/>
+    <package name="components.applications">
+      <metrics statements="22" coveredstatements="22" conditionals="47" coveredconditionals="47" methods="3" coveredmethods="3"/>
+      <file name="application-row.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\applications\application-row.tsx">
+        <metrics statements="8" coveredstatements="8" conditionals="9" coveredconditionals="9" methods="1" coveredmethods="1"/>
+        <line num="1" count="1" type="stmt"/>
+        <line num="2" count="1" type="stmt"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="12" count="1" type="stmt"/>
+        <line num="13" count="9" type="stmt"/>
+        <line num="15" count="9" type="stmt"/>
+      </file>
+      <file name="status-timeline.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\applications\status-timeline.tsx">
+        <metrics statements="14" coveredstatements="14" conditionals="38" coveredconditionals="38" methods="2" coveredmethods="2"/>
+        <line num="1" count="2" type="stmt"/>
+        <line num="4" count="2" type="stmt"/>
+        <line num="12" count="2" type="stmt"/>
+        <line num="22" count="2" type="stmt"/>
+        <line num="29" count="2" type="stmt"/>
+        <line num="41" count="2" type="stmt"/>
+        <line num="42" count="19" type="stmt"/>
+        <line num="43" count="19" type="cond" truecount="2" falsecount="0"/>
+        <line num="45" count="19" type="stmt"/>
+        <line num="49" count="95" type="stmt"/>
+        <line num="50" count="95" type="cond" truecount="2" falsecount="0"/>
+        <line num="51" count="95" type="cond" truecount="2" falsecount="0"/>
+        <line num="52" count="95" type="cond" truecount="2" falsecount="0"/>
+        <line num="54" count="95" type="stmt"/>
+      </file>
+    </package>
+    <package name="components.layout">
+      <metrics statements="17" coveredstatements="17" conditionals="11" coveredconditionals="10" methods="5" coveredmethods="4"/>
+      <file name="sidebar.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\layout\sidebar.tsx">
+        <metrics statements="17" coveredstatements="17" conditionals="11" coveredconditionals="10" methods="5" coveredmethods="4"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="6" count="1" type="stmt"/>
+        <line num="14" count="1" type="stmt"/>
+        <line num="15" count="1" type="stmt"/>
+        <line num="16" count="1" type="stmt"/>
+        <line num="18" count="1" type="stmt"/>
+        <line num="24" count="1" type="stmt"/>
+        <line num="25" count="9" type="stmt"/>
+        <line num="26" count="9" type="stmt"/>
+        <line num="28" count="9" type="stmt"/>
+        <line num="29" count="8" type="stmt"/>
+        <line num="30" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="34" count="9" type="stmt"/>
+        <line num="49" count="27" type="stmt"/>
+        <line num="50" count="27" type="stmt"/>
+      </file>
+    </package>
+    <package name="components.matches">
+      <metrics statements="126" coveredstatements="71" conditionals="86" coveredconditionals="52" methods="37" coveredmethods="16"/>
+      <file name="match-card.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\matches\match-card.tsx">
+        <metrics statements="41" coveredstatements="28" conditionals="31" coveredconditionals="24" methods="8" coveredmethods="5"/>
+        <line num="3" count="2" type="stmt"/>
+        <line num="4" count="2" type="stmt"/>
+        <line num="14" count="2" type="stmt"/>
+        <line num="15" count="2" type="stmt"/>
+        <line num="16" count="2" type="stmt"/>
+        <line num="17" count="2" type="stmt"/>
+        <line num="18" count="2" type="stmt"/>
+        <line num="30" count="2" type="stmt"/>
+        <line num="31" count="24" type="stmt"/>
+        <line num="34" count="24" type="stmt"/>
+        <line num="37" count="24" type="stmt"/>
+        <line num="40" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="41" count="0" type="stmt"/>
+        <line num="42" count="0" type="stmt"/>
+        <line num="43" count="0" type="stmt"/>
+        <line num="44" count="0" type="stmt"/>
+        <line num="45" count="0" type="stmt"/>
+        <line num="47" count="0" type="stmt"/>
+        <line num="48" count="0" type="stmt"/>
+        <line num="50" count="0" type="stmt"/>
+        <line num="55" count="1" type="stmt"/>
+        <line num="56" count="1" type="stmt"/>
+        <line num="57" count="1" type="stmt"/>
+        <line num="58" count="1" type="stmt"/>
+        <line num="60" count="0" type="stmt"/>
+        <line num="62" count="1" type="stmt"/>
+        <line num="67" count="1" type="stmt"/>
+        <line num="68" count="1" type="stmt"/>
+        <line num="69" count="1" type="stmt"/>
+        <line num="70" count="1" type="stmt"/>
+        <line num="72" count="0" type="stmt"/>
+        <line num="74" count="1" type="stmt"/>
+        <line num="78" count="24" type="stmt"/>
+        <line num="79" count="24" type="stmt"/>
+        <line num="80" count="24" type="stmt"/>
+        <line num="82" count="24" type="stmt"/>
+        <line num="94" count="1" type="stmt"/>
+        <line num="95" count="1" type="stmt"/>
+        <line num="162" count="72" type="stmt"/>
+        <line num="177" count="0" type="stmt"/>
+        <line num="192" count="0" type="stmt"/>
+      </file>
+      <file name="match-queue.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\matches\match-queue.tsx">
+        <metrics statements="85" coveredstatements="43" conditionals="55" coveredconditionals="28" methods="29" coveredmethods="11"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="6" count="1" type="stmt"/>
+        <line num="7" count="1" type="stmt"/>
+        <line num="8" count="1" type="stmt"/>
+        <line num="9" count="1" type="stmt"/>
+        <line num="12" count="1" type="stmt"/>
+        <line num="19" count="1" type="stmt"/>
+        <line num="20" count="31" type="stmt"/>
+        <line num="21" count="30" type="stmt"/>
+        <line num="22" count="30" type="stmt"/>
+        <line num="23" count="30" type="stmt"/>
+        <line num="24" count="30" type="stmt"/>
+        <line num="25" count="30" type="stmt"/>
+        <line num="26" count="30" type="stmt"/>
+        <line num="29" count="30" type="stmt"/>
+        <line num="30" count="30" type="stmt"/>
+        <line num="32" count="30" type="stmt"/>
+        <line num="33" count="30" type="cond" truecount="2" falsecount="0"/>
+        <line num="36" count="0" type="stmt"/>
+        <line num="37" count="0" type="stmt"/>
+        <line num="38" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="39" count="0" type="stmt"/>
+        <line num="44" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="45" count="0" type="stmt"/>
+        <line num="47" count="2" type="stmt"/>
+        <line num="52" count="0" type="stmt"/>
+        <line num="56" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="57" count="0" type="stmt"/>
+        <line num="58" count="0" type="stmt"/>
+        <line num="59" count="0" type="stmt"/>
+        <line num="61" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="62" count="0" type="stmt"/>
+        <line num="64" count="0" type="stmt"/>
+        <line num="65" count="0" type="stmt"/>
+        <line num="66" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="70" count="0" type="stmt"/>
+        <line num="72" count="0" type="stmt"/>
+        <line num="73" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="75" count="0" type="stmt"/>
+        <line num="80" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="81" count="0" type="stmt"/>
+        <line num="82" count="0" type="stmt"/>
+        <line num="83" count="0" type="stmt"/>
+        <line num="84" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="85" count="0" type="stmt"/>
+        <line num="87" count="0" type="stmt"/>
+        <line num="88" count="0" type="stmt"/>
+        <line num="89" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="93" count="0" type="stmt"/>
+        <line num="95" count="0" type="stmt"/>
+        <line num="96" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="98" count="0" type="stmt"/>
+        <line num="103" count="30" type="stmt"/>
+        <line num="104" count="10" type="stmt"/>
+        <line num="108" count="30" type="stmt"/>
+        <line num="110" count="10" type="stmt"/>
+        <line num="111" count="10" type="stmt"/>
+        <line num="112" count="10" type="stmt"/>
+        <line num="113" count="10" type="cond" truecount="1" falsecount="1"/>
+        <line num="114" count="10" type="stmt"/>
+        <line num="115" count="9" type="cond" truecount="1" falsecount="1"/>
+        <line num="116" count="9" type="stmt"/>
+        <line num="118" count="1" type="stmt"/>
+        <line num="119" count="1" type="cond" truecount="1" falsecount="1"/>
+        <line num="126" count="30" type="stmt"/>
+        <line num="127" count="10" type="stmt"/>
+        <line num="128" count="10" type="stmt"/>
+        <line num="129" count="10" type="stmt"/>
+        <line num="130" count="10" type="stmt"/>
+        <line num="134" count="0" type="stmt"/>
+        <line num="135" count="0" type="stmt"/>
+        <line num="136" count="0" type="stmt"/>
+        <line num="137" count="0" type="stmt"/>
+        <line num="138" count="0" type="stmt"/>
+        <line num="142" count="0" type="stmt"/>
+        <line num="143" count="0" type="stmt"/>
+        <line num="144" count="0" type="stmt"/>
+        <line num="148" count="0" type="stmt"/>
+        <line num="149" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="153" count="30" type="stmt"/>
+        <line num="160" count="120" type="stmt"/>
+        <line num="162" count="1" type="stmt"/>
+        <line num="274" count="6" type="stmt"/>
+      </file>
+    </package>
+    <package name="components.settings">
+      <metrics statements="215" coveredstatements="168" conditionals="159" coveredconditionals="110" methods="62" coveredmethods="28"/>
+      <file name="notifications-form.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\settings\notifications-form.tsx">
+        <metrics statements="73" coveredstatements="50" conditionals="60" coveredconditionals="37" methods="17" coveredmethods="8"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="6" count="1" type="stmt"/>
+        <line num="7" count="1" type="stmt"/>
+        <line num="8" count="1" type="stmt"/>
+        <line num="9" count="1" type="stmt"/>
+        <line num="10" count="1" type="stmt"/>
+        <line num="11" count="1" type="stmt"/>
+        <line num="13" count="1" type="stmt"/>
+        <line num="21" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="22" count="2" type="stmt"/>
+        <line num="23" count="2" type="stmt"/>
+        <line num="24" count="1" type="stmt"/>
+        <line num="26" count="1" type="stmt"/>
+        <line num="30" count="1" type="stmt"/>
+        <line num="31" count="164" type="stmt"/>
+        <line num="32" count="163" type="stmt"/>
+        <line num="33" count="163" type="stmt"/>
+        <line num="34" count="163" type="stmt"/>
+        <line num="35" count="163" type="stmt"/>
+        <line num="36" count="163" type="stmt"/>
+        <line num="37" count="163" type="stmt"/>
+        <line num="38" count="163" type="stmt"/>
+        <line num="40" count="163" type="stmt"/>
+        <line num="41" count="11" type="stmt"/>
+        <line num="43" count="11" type="cond" truecount="3" falsecount="1"/>
+        <line num="44" count="11" type="cond" truecount="3" falsecount="1"/>
+        <line num="45" count="11" type="stmt"/>
+        <line num="50" count="11" type="cond" truecount="3" falsecount="1"/>
+        <line num="56" count="0" type="stmt"/>
+        <line num="57" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="62" count="3" type="cond" truecount="4" falsecount="0"/>
+        <line num="63" count="1" type="stmt"/>
+        <line num="64" count="1" type="stmt"/>
+        <line num="66" count="2" type="cond" truecount="4" falsecount="0"/>
+        <line num="67" count="1" type="stmt"/>
+        <line num="68" count="1" type="stmt"/>
+        <line num="71" count="1" type="stmt"/>
+        <line num="72" count="1" type="stmt"/>
+        <line num="73" count="1" type="stmt"/>
+        <line num="74" count="1" type="stmt"/>
+        <line num="76" count="1" type="stmt"/>
+        <line num="77" count="1" type="stmt"/>
+        <line num="84" count="1" type="stmt"/>
+        <line num="85" count="1" type="stmt"/>
+        <line num="86" count="1" type="stmt"/>
+        <line num="88" count="0" type="stmt"/>
+        <line num="89" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="91" count="1" type="stmt"/>
+        <line num="96" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="97" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="98" count="0" type="stmt"/>
+        <line num="99" count="0" type="stmt"/>
+        <line num="101" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="102" count="0" type="stmt"/>
+        <line num="103" count="0" type="stmt"/>
+        <line num="105" count="0" type="stmt"/>
+        <line num="106" count="0" type="stmt"/>
+        <line num="107" count="0" type="stmt"/>
+        <line num="109" count="0" type="stmt"/>
+        <line num="110" count="0" type="stmt"/>
+        <line num="119" count="0" type="stmt"/>
+        <line num="120" count="0" type="stmt"/>
+        <line num="122" count="0" type="stmt"/>
+        <line num="123" count="0" type="stmt"/>
+        <line num="124" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="125" count="0" type="stmt"/>
+        <line num="129" count="163" type="stmt"/>
+        <line num="159" count="83" type="stmt"/>
+        <line num="170" count="59" type="stmt"/>
+        <line num="180" count="576" type="stmt"/>
+        <line num="187" count="0" type="stmt"/>
+      </file>
+      <file name="preferences-form.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\settings\preferences-form.tsx">
+        <metrics statements="100" coveredstatements="79" conditionals="79" coveredconditionals="55" methods="35" coveredmethods="14"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="6" count="1" type="stmt"/>
+        <line num="7" count="1" type="stmt"/>
+        <line num="8" count="1" type="stmt"/>
+        <line num="9" count="1" type="stmt"/>
+        <line num="10" count="1" type="stmt"/>
+        <line num="11" count="1" type="stmt"/>
+        <line num="12" count="1" type="stmt"/>
+        <line num="16" count="1" type="stmt"/>
+        <line num="41" count="1" type="stmt"/>
+        <line num="42" count="24" type="cond" truecount="2" falsecount="0"/>
+        <line num="43" count="24" type="cond" truecount="2" falsecount="0"/>
+        <line num="44" count="24" type="stmt"/>
+        <line num="47" count="1" type="stmt"/>
+        <line num="49" count="26" type="stmt"/>
+        <line num="50" count="26" type="stmt"/>
+        <line num="51" count="26" type="stmt"/>
+        <line num="52" count="26" type="stmt"/>
+        <line num="53" count="26" type="stmt"/>
+        <line num="54" count="26" type="stmt"/>
+        <line num="55" count="26" type="stmt"/>
+        <line num="56" count="26" type="stmt"/>
+        <line num="57" count="26" type="stmt"/>
+        <line num="58" count="26" type="stmt"/>
+        <line num="61" count="26" type="stmt"/>
+        <line num="62" count="26" type="stmt"/>
+        <line num="63" count="26" type="stmt"/>
+        <line num="64" count="26" type="stmt"/>
+        <line num="65" count="26" type="stmt"/>
+        <line num="66" count="26" type="stmt"/>
+        <line num="68" count="26" type="stmt"/>
+        <line num="71" count="26" type="stmt"/>
+        <line num="72" count="26" type="stmt"/>
+        <line num="73" count="26" type="stmt"/>
+        <line num="75" count="26" type="stmt"/>
+        <line num="76" count="8" type="stmt"/>
+        <line num="78" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="79" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="80" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="81" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="82" count="8" type="cond" truecount="1" falsecount="1"/>
+        <line num="83" count="8" type="cond" truecount="1" falsecount="1"/>
+        <line num="84" count="8" type="cond" truecount="1" falsecount="1"/>
+        <line num="85" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="86" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="87" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="88" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="89" count="8" type="cond" truecount="3" falsecount="1"/>
+        <line num="101" count="0" type="stmt"/>
+        <line num="102" count="0" type="cond" truecount="0" falsecount="4"/>
+        <line num="103" count="0" type="stmt"/>
+        <line num="107" count="0" type="stmt"/>
+        <line num="121" count="78" type="stmt"/>
+        <line num="125" count="0" type="stmt"/>
+        <line num="128" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="147" count="78" type="cond" truecount="2" falsecount="0"/>
+        <line num="148" count="34" type="stmt"/>
+        <line num="151" count="34" type="stmt"/>
+        <line num="156" count="0" type="stmt"/>
+        <line num="167" count="3" type="cond" truecount="1" falsecount="1"/>
+        <line num="169" count="3" type="stmt"/>
+        <line num="170" count="3" type="stmt"/>
+        <line num="172" count="0" type="stmt"/>
+        <line num="177" count="1" type="stmt"/>
+        <line num="178" count="1" type="stmt"/>
+        <line num="182" count="1" type="stmt"/>
+        <line num="183" count="1" type="stmt"/>
+        <line num="188" count="3" type="cond" truecount="2" falsecount="0"/>
+        <line num="189" count="2" type="stmt"/>
+        <line num="190" count="2" type="cond" truecount="3" falsecount="1"/>
+        <line num="191" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="193" count="2" type="stmt"/>
+        <line num="194" count="2" type="stmt"/>
+        <line num="195" count="2" type="stmt"/>
+        <line num="196" count="2" type="stmt"/>
+        <line num="197" count="2" type="stmt"/>
+        <line num="212" count="1" type="stmt"/>
+        <line num="213" count="1" type="stmt"/>
+        <line num="215" count="1" type="stmt"/>
+        <line num="216" count="1" type="cond" truecount="1" falsecount="1"/>
+        <line num="218" count="2" type="stmt"/>
+        <line num="222" count="26" type="stmt"/>
+        <line num="269" count="0" type="stmt"/>
+        <line num="272" count="0" type="stmt"/>
+        <line num="281" count="0" type="stmt"/>
+        <line num="286" count="0" type="stmt"/>
+        <line num="296" count="0" type="stmt"/>
+        <line num="313" count="0" type="stmt"/>
+        <line num="319" count="0" type="stmt"/>
+        <line num="330" count="0" type="stmt"/>
+        <line num="335" count="0" type="stmt"/>
+        <line num="388" count="0" type="stmt"/>
+        <line num="399" count="0" type="stmt"/>
+        <line num="403" count="624" type="stmt"/>
+        <line num="409" count="0" type="stmt"/>
+        <line num="413" count="624" type="stmt"/>
+        <line num="427" count="0" type="stmt"/>
+        <line num="430" count="572" type="stmt"/>
+      </file>
+      <file name="profile-form.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\settings\profile-form.tsx">
+        <metrics statements="42" coveredstatements="39" conditionals="20" coveredconditionals="18" methods="10" coveredmethods="6"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="5" count="1" type="stmt"/>
+        <line num="6" count="1" type="stmt"/>
+        <line num="7" count="1" type="stmt"/>
+        <line num="8" count="1" type="stmt"/>
+        <line num="9" count="1" type="stmt"/>
+        <line num="10" count="1" type="stmt"/>
+        <line num="13" count="1" type="stmt"/>
+        <line num="14" count="28" type="stmt"/>
+        <line num="15" count="28" type="stmt"/>
+        <line num="16" count="28" type="stmt"/>
+        <line num="17" count="28" type="stmt"/>
+        <line num="18" count="28" type="stmt"/>
+        <line num="19" count="28" type="stmt"/>
+        <line num="20" count="28" type="stmt"/>
+        <line num="21" count="28" type="stmt"/>
+        <line num="23" count="28" type="stmt"/>
+        <line num="24" count="8" type="stmt"/>
+        <line num="26" count="7" type="stmt"/>
+        <line num="27" count="7" type="cond" truecount="3" falsecount="1"/>
+        <line num="28" count="7" type="stmt"/>
+        <line num="29" count="7" type="stmt"/>
+        <line num="30" count="7" type="stmt"/>
+        <line num="33" count="1" type="stmt"/>
+        <line num="34" count="1" type="stmt"/>
+        <line num="39" count="2" type="stmt"/>
+        <line num="40" count="2" type="stmt"/>
+        <line num="41" count="2" type="stmt"/>
+        <line num="42" count="2" type="stmt"/>
+        <line num="43" count="2" type="stmt"/>
+        <line num="49" count="1" type="stmt"/>
+        <line num="50" count="1" type="stmt"/>
+        <line num="51" count="1" type="stmt"/>
+        <line num="53" count="1" type="stmt"/>
+        <line num="54" count="1" type="cond" truecount="1" falsecount="1"/>
+        <line num="56" count="2" type="stmt"/>
+        <line num="60" count="28" type="stmt"/>
+        <line num="76" count="9" type="stmt"/>
+        <line num="91" count="0" type="stmt"/>
+        <line num="108" count="0" type="stmt"/>
+        <line num="128" count="0" type="stmt"/>
+      </file>
+    </package>
+    <package name="components.ui">
+      <metrics statements="80" coveredstatements="80" conditionals="23" coveredconditionals="21" methods="14" coveredmethods="14"/>
+      <file name="alert.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\alert.tsx">
+        <metrics statements="9" coveredstatements="9" conditionals="3" coveredconditionals="3" methods="1" coveredmethods="1"/>
+        <line num="1" count="5" type="stmt"/>
+        <line num="2" count="5" type="stmt"/>
+        <line num="3" count="5" type="stmt"/>
+        <line num="7" count="5" type="stmt"/>
+        <line num="14" count="5" type="stmt"/>
+        <line num="26" count="16" type="cond" truecount="1" falsecount="0"/>
+        <line num="27" count="16" type="stmt"/>
+        <line num="28" count="16" type="stmt"/>
+        <line num="47" count="5" type="stmt"/>
+      </file>
+      <file name="badge.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\badge.tsx">
+        <metrics statements="7" coveredstatements="7" conditionals="0" coveredconditionals="0" methods="1" coveredmethods="1"/>
+        <line num="1" count="4" type="stmt"/>
+        <line num="2" count="4" type="stmt"/>
+        <line num="3" count="4" type="stmt"/>
+        <line num="5" count="4" type="stmt"/>
+        <line num="42" count="85" type="stmt"/>
+        <line num="43" count="85" type="stmt"/>
+        <line num="48" count="4" type="stmt"/>
+      </file>
+      <file name="button.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\button.tsx">
+        <metrics statements="11" coveredstatements="11" conditionals="9" coveredconditionals="9" methods="1" coveredmethods="1"/>
+        <line num="1" count="6" type="stmt"/>
+        <line num="2" count="6" type="stmt"/>
+        <line num="3" count="6" type="stmt"/>
+        <line num="4" count="6" type="stmt"/>
+        <line num="6" count="6" type="stmt"/>
+        <line num="53" count="6" type="stmt"/>
+        <line num="54" count="558" type="cond" truecount="1" falsecount="0"/>
+        <line num="55" count="558" type="cond" truecount="2" falsecount="0"/>
+        <line num="56" count="558" type="stmt"/>
+        <line num="80" count="6" type="stmt"/>
+        <line num="82" count="6" type="stmt"/>
+      </file>
+      <file name="card.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\card.tsx">
+        <metrics statements="21" coveredstatements="21" conditionals="0" coveredconditionals="0" methods="6" coveredmethods="6"/>
+        <line num="1" count="6" type="stmt"/>
+        <line num="2" count="6" type="stmt"/>
+        <line num="4" count="6" type="stmt"/>
+        <line num="7" count="244" type="stmt"/>
+        <line num="17" count="6" type="stmt"/>
+        <line num="19" count="6" type="stmt"/>
+        <line num="22" count="219" type="stmt"/>
+        <line num="29" count="6" type="stmt"/>
+        <line num="31" count="6" type="stmt"/>
+        <line num="34" count="219" type="stmt"/>
+        <line num="41" count="6" type="stmt"/>
+        <line num="43" count="6" type="stmt"/>
+        <line num="46" count="219" type="stmt"/>
+        <line num="49" count="6" type="stmt"/>
+        <line num="51" count="6" type="stmt"/>
+        <line num="54" count="243" type="stmt"/>
+        <line num="57" count="6" type="stmt"/>
+        <line num="59" count="6" type="stmt"/>
+        <line num="62" count="26" type="stmt"/>
+        <line num="72" count="6" type="stmt"/>
+        <line num="74" count="6" type="stmt"/>
+      </file>
+      <file name="input.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\input.tsx">
+        <metrics statements="7" coveredstatements="7" conditionals="4" coveredconditionals="4" methods="1" coveredmethods="1"/>
+        <line num="1" count="4" type="stmt"/>
+        <line num="2" count="4" type="stmt"/>
+        <line num="8" count="4" type="stmt"/>
+        <line num="9" count="573" type="stmt"/>
+        <line num="10" count="573" type="stmt"/>
+        <line num="33" count="4" type="stmt"/>
+        <line num="35" count="4" type="stmt"/>
+      </file>
+      <file name="label.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\label.tsx">
+        <metrics statements="6" coveredstatements="6" conditionals="2" coveredconditionals="2" methods="1" coveredmethods="1"/>
+        <line num="1" count="3" type="stmt"/>
+        <line num="2" count="3" type="stmt"/>
+        <line num="8" count="3" type="stmt"/>
+        <line num="9" count="980" type="stmt"/>
+        <line num="23" count="3" type="stmt"/>
+        <line num="25" count="3" type="stmt"/>
+      </file>
+      <file name="select.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\select.tsx">
+        <metrics statements="6" coveredstatements="6" conditionals="4" coveredconditionals="2" methods="1" coveredmethods="1"/>
+        <line num="1" count="2" type="stmt"/>
+        <line num="2" count="2" type="stmt"/>
+        <line num="8" count="2" type="stmt"/>
+        <line num="9" count="132" type="stmt"/>
+        <line num="30" count="2" type="stmt"/>
+        <line num="32" count="2" type="stmt"/>
+      </file>
+      <file name="spinner.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\spinner.tsx">
+        <metrics statements="6" coveredstatements="6" conditionals="1" coveredconditionals="1" methods="1" coveredmethods="1"/>
+        <line num="1" count="2" type="stmt"/>
+        <line num="2" count="2" type="stmt"/>
+        <line num="8" count="2" type="stmt"/>
+        <line num="10" count="25" type="cond" truecount="1" falsecount="0"/>
+        <line num="11" count="25" type="stmt"/>
+        <line num="37" count="2" type="stmt"/>
+      </file>
+      <file name="switch.tsx" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\components\ui\switch.tsx">
+        <metrics statements="7" coveredstatements="7" conditionals="0" coveredconditionals="0" methods="1" coveredmethods="1"/>
+        <line num="3" count="3" type="stmt"/>
+        <line num="4" count="3" type="stmt"/>
+        <line num="6" count="3" type="stmt"/>
+        <line num="8" count="3" type="stmt"/>
+        <line num="11" count="220" type="stmt"/>
+        <line num="27" count="3" type="stmt"/>
+        <line num="29" count="3" type="stmt"/>
+      </file>
+    </package>
+    <package name="lib">
+      <metrics statements="100" coveredstatements="98" conditionals="88" coveredconditionals="82" methods="26" coveredmethods="26"/>
+      <file name="api.ts" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\lib\api.ts">
+        <metrics statements="66" coveredstatements="64" conditionals="55" coveredconditionals="49" methods="18" coveredmethods="18"/>
+        <line num="10" count="7" type="stmt"/>
+        <line num="28" count="83" type="stmt"/>
+        <line num="30" count="83" type="stmt"/>
+        <line num="34" count="83" type="cond" truecount="1" falsecount="1"/>
+        <line num="35" count="83" type="stmt"/>
+        <line num="36" count="83" type="cond" truecount="1" falsecount="1"/>
+        <line num="37" count="83" type="stmt"/>
+        <line num="42" count="83" type="cond" truecount="2" falsecount="0"/>
+        <line num="43" count="81" type="cond" truecount="3" falsecount="1"/>
+        <line num="46" count="83" type="stmt"/>
+        <line num="48" count="83" type="cond" truecount="2" falsecount="0"/>
+        <line num="49" count="12" type="stmt"/>
+        <line num="50" count="12" type="stmt"/>
+        <line num="51" count="12" type="stmt"/>
+        <line num="52" count="11" type="cond" truecount="7" falsecount="1"/>
+        <line num="56" count="12" type="stmt"/>
+        <line num="60" count="71" type="cond" truecount="2" falsecount="0"/>
+        <line num="61" count="68" type="stmt"/>
+        <line num="71" count="7" type="stmt"/>
+        <line num="74" count="15" type="stmt"/>
+        <line num="75" count="15" type="cond" truecount="2" falsecount="0"/>
+        <line num="76" count="11" type="stmt"/>
+        <line num="77" count="32" type="stmt"/>
+        <line num="80" count="15" type="cond" truecount="2" falsecount="0"/>
+        <line num="81" count="15" type="stmt"/>
+        <line num="84" count="7" type="stmt"/>
+        <line num="89" count="5" type="stmt"/>
+        <line num="95" count="7" type="stmt"/>
+        <line num="99" count="2" type="stmt"/>
+        <line num="105" count="7" type="stmt"/>
+        <line num="109" count="1" type="stmt"/>
+        <line num="117" count="7" type="stmt"/>
+        <line num="120" count="2" type="stmt"/>
+        <line num="121" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="122" count="0" type="stmt"/>
+        <line num="123" count="0" type="stmt"/>
+        <line num="126" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="127" count="2" type="stmt"/>
+        <line num="130" count="7" type="stmt"/>
+        <line num="131" count="1" type="stmt"/>
+        <line num="134" count="7" type="stmt"/>
+        <line num="135" count="1" type="stmt"/>
+        <line num="143" count="7" type="stmt"/>
+        <line num="144" count="1" type="stmt"/>
+        <line num="147" count="7" type="stmt"/>
+        <line num="148" count="2" type="stmt"/>
+        <line num="149" count="2" type="stmt"/>
+        <line num="150" count="2" type="stmt"/>
+        <line num="153" count="7" type="stmt"/>
+        <line num="154" count="1" type="stmt"/>
+        <line num="157" count="7" type="stmt"/>
+        <line num="158" count="1" type="stmt"/>
+        <line num="163" count="7" type="stmt"/>
+        <line num="164" count="10" type="stmt"/>
+        <line num="167" count="7" type="stmt"/>
+        <line num="168" count="3" type="stmt"/>
+        <line num="176" count="7" type="stmt"/>
+        <line num="177" count="29" type="stmt"/>
+        <line num="180" count="7" type="stmt"/>
+        <line num="181" count="5" type="stmt"/>
+        <line num="189" count="7" type="stmt"/>
+        <line num="194" count="2" type="stmt"/>
+        <line num="219" count="7" type="stmt"/>
+        <line num="220" count="2" type="stmt"/>
+        <line num="221" count="2" type="stmt"/>
+        <line num="222" count="2" type="stmt"/>
+      </file>
+      <file name="utils.ts" path="C:\Users\bhata\OneDrive\Desktop\development\projects\AutoDreamApplier\frontend\src\lib\utils.ts">
+        <metrics statements="34" coveredstatements="34" conditionals="33" coveredconditionals="33" methods="8" coveredmethods="8"/>
+        <line num="1" count="15" type="stmt"/>
+        <line num="2" count="15" type="stmt"/>
+        <line num="5" count="15" type="stmt"/>
+        <line num="6" count="4038" type="stmt"/>
+        <line num="10" count="15" type="stmt"/>
+        <line num="15" count="32" type="cond" truecount="4" falsecount="0"/>
+        <line num="16" count="24" type="cond" truecount="2" falsecount="0"/>
+        <line num="17" count="24" type="stmt"/>
+        <line num="18" count="46" type="cond" truecount="2" falsecount="0"/>
+        <line num="19" count="24" type="cond" truecount="4" falsecount="0"/>
+        <line num="20" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="21" count="1" type="stmt"/>
+        <line num="25" count="15" type="stmt"/>
+        <line num="26" count="29" type="stmt"/>
+        <line num="27" count="29" type="stmt"/>
+        <line num="28" count="29" type="cond" truecount="2" falsecount="0"/>
+        <line num="29" count="28" type="stmt"/>
+        <line num="30" count="28" type="cond" truecount="2" falsecount="0"/>
+        <line num="31" count="27" type="stmt"/>
+        <line num="32" count="27" type="cond" truecount="2" falsecount="0"/>
+        <line num="33" count="2" type="stmt"/>
+        <line num="34" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="35" count="1" type="stmt"/>
+        <line num="39" count="15" type="stmt"/>
+        <line num="40" count="12" type="cond" truecount="2" falsecount="0"/>
+        <line num="41" count="10" type="stmt"/>
+        <line num="49" count="15" type="stmt"/>
+        <line num="50" count="8" type="cond" truecount="4" falsecount="0"/>
+        <line num="62" count="15" type="stmt"/>
+        <line num="63" count="102" type="cond" truecount="2" falsecount="0"/>
+        <line num="64" count="4" type="cond" truecount="2" falsecount="0"/>
+        <line num="65" count="2" type="stmt"/>
+        <line num="69" count="15" type="stmt"/>
+        <line num="70" count="100" type="stmt"/>
+      </file>
+    </package>
+  </project>
+</coverage>

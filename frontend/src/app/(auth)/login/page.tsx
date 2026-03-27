@@ -63,7 +63,7 @@ export default function LoginPage() {
             <Label required>Password</Label>
             <Input
               type="password"
-              placeholder="••••••••"
+              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

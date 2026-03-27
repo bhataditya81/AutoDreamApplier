@@ -17,6 +17,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { setMatchFeedback, updateMatchStatus, type MatchStatusUpdateResponse } from "@/lib/api";
 import { formatSalary, scoreColor, scorePercent, timeAgo } from "@/lib/utils";
 import type { Match } from "@/lib/types";
+import { SalaryBenchmarkBadge } from "@/components/salary/salary-benchmark-badge";
 
 interface MatchCardProps {
   match: Match;
@@ -155,6 +156,16 @@ export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCa
             {timeAgo(match.createdAt)}
           </span>
         </div>
+
+        {/* Salary benchmark badge */}
+        {job.title && (
+          <SalaryBenchmarkBadge
+            title={job.title}
+            location={job.location ?? ''}
+            salaryMin={job.salaryMin}
+            salaryMax={job.salaryMax}
+          />
+        )}
 
         {/* Score breakdown */}
         <div className="flex flex-wrap gap-2 mb-3">

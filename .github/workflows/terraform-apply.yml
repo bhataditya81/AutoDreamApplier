@@ -1,0 +1,54 @@
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to confirm deployment'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'apply'
+    environment: production
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~> 1.6'
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="redis_url=${{ secrets.REDIS_URL }}" \
+            -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
+            -var="encryption_key=${{ secrets.ENCRYPTION_KEY }}" \
+            -var="ec2_key_pair_name=${{ secrets.EC2_KEY_PAIR_NAME }}" \
+            -var="admin_ssh_cidr=${{ secrets.ADMIN_SSH_CIDR }}"
+
+      - name: Capture outputs
+        run: terraform output

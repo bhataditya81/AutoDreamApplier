@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Star, Trash2, FileText } from "lucide-react";
+import { Upload, Star, Trash2, FileText, Trophy, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
-import { listResumes, uploadResume, setPrimaryResume, deleteResume } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { listResumes, uploadResume, setPrimaryResume, deleteResume, updateResumeAB } from "@/lib/api";
 import type { Resume } from "@/lib/types";
 
 function formatDate(iso: string) {
@@ -14,6 +16,16 @@ function formatDate(iso: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+/** Returns the resume with the highest interview_rate that has >= 5 total_applications. */
+function getBestPerformer(resumes: Resume[]): string | null {
+  const eligible = resumes.filter((r) => r.total_applications >= 5);
+  if (eligible.length === 0) return null;
+  const best = eligible.reduce((a, b) =>
+    a.interview_rate > b.interview_rate ? a : b
+  );
+  return best.id;
 }
 
 export function ResumeList() {
@@ -93,6 +105,27 @@ export function ResumeList() {
     }
   }
 
+  async function handleToggleAB(resume: Resume) {
+    setActionId(resume.id);
+    setError(null);
+    const newEnabled = !resume.ab_enabled;
+    const weight = resume.ab_weight > 0 ? resume.ab_weight : 1;
+    try {
+      const updated = await updateResumeAB(resume.id, newEnabled, weight);
+      setResumes((prev) =>
+        prev.map((r) => (r.id === resume.id ? updated : r))
+      );
+    } catch (e: unknown) {
+      console.error("[ResumeList] toggleAB error:", e);
+      setError(e instanceof Error ? e.message : "Failed to update A/B settings");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  const showABControls = resumes.length >= 2;
+  const bestPerformerId = getBestPerformer(resumes);
+
   return (
     <div className="space-y-5 max-w-2xl">
       {/* Upload area */}
@@ -124,6 +157,15 @@ export function ResumeList() {
         />
       </div>
 
+      {showABControls && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100">
+          <FlaskConical className="h-4 w-4 text-sky-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-sky-700">
+            <span className="font-medium">A/B Testing</span> — enable the toggle on 2 or more resumes to have AutoDreamApplier rotate between them. The resume with the highest interview rate earns a Best Performer badge once it has 5+ applications.
+          </p>
+        </div>
+      )}
+
       {error && (
         <Alert variant="error" title="Error">
           {error}
@@ -147,46 +189,93 @@ export function ResumeList() {
       ) : (
         <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
           {resumes.map((resume) => (
-            <li key={resume.id} className="flex items-center gap-4 px-4 py-3 bg-white hover:bg-gray-50 transition-colors">
-              <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
-                <FileText className="h-4 w-4 text-brand-600" />
+            <li key={resume.id} className="flex flex-col px-4 py-3 bg-white hover:bg-gray-50 transition-colors gap-2">
+              {/* Top row: icon + name + badges + actions */}
+              <div className="flex items-center gap-4">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                  <FileText className="h-4 w-4 text-brand-600" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-gray-900 truncate">{resume.fileName}</span>
+                    {resume.isPrimary && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+                        <Star className="h-3 w-3" />
+                        Primary
+                      </span>
+                    )}
+                    {bestPerformerId === resume.id && (
+                      <Badge variant="success">
+                        <Trophy className="h-3 w-3" />
+                        Best Performer
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Uploaded {formatDate(resume.createdAt)}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {showABControls && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">A/B</span>
+                      <Switch
+                        checked={resume.ab_enabled}
+                        onCheckedChange={() => handleToggleAB(resume)}
+                        disabled={actionId === resume.id}
+                        aria-label="Toggle A/B testing for this resume"
+                      />
+                    </div>
+                  )}
+                  {!resume.isPrimary && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSetPrimary(resume.id)}
+                      disabled={actionId === resume.id}
+                    >
+                      {actionId === resume.id ? <Spinner size="sm" /> : "Set Primary"}
+                    </Button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(resume.id)}
+                    disabled={actionId === resume.id}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                    aria-label="Delete resume"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900 truncate">{resume.fileName}</span>
-                  {resume.isPrimary && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
-                      <Star className="h-3 w-3" />
-                      Primary
-                    </span>
+              {/* Stats row */}
+              {resume.total_applications > 0 && (
+                <div className="flex items-center gap-3 pl-13 ml-13 text-xs text-gray-500">
+                  <span className="ml-13">{resume.total_applications} app{resume.total_applications !== 1 ? "s" : ""}</span>
+                  <span className="text-gray-300">·</span>
+                  <span>{resume.total_interviews} interview{resume.total_interviews !== 1 ? "s" : ""}</span>
+                  <span className="text-gray-300">·</span>
+                  <span
+                    className={
+                      resume.interview_rate >= 20
+                        ? "text-green-600 font-medium"
+                        : resume.interview_rate >= 10
+                        ? "text-yellow-600 font-medium"
+                        : "text-gray-500"
+                    }
+                  >
+                    {resume.interview_rate.toFixed(1)}% rate
+                  </span>
+                  {resume.total_offers > 0 && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span className="text-teal-600 font-medium">{resume.total_offers} offer{resume.total_offers !== 1 ? "s" : ""}</span>
+                    </>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Uploaded {formatDate(resume.createdAt)}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {!resume.isPrimary && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSetPrimary(resume.id)}
-                    disabled={actionId === resume.id}
-                  >
-                    {actionId === resume.id ? <Spinner size="sm" /> : "Set Primary"}
-                  </Button>
-                )}
-                <button
-                  onClick={() => handleDelete(resume.id)}
-                  disabled={actionId === resume.id}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
-                  aria-label="Delete resume"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+              )}
             </li>
           ))}
         </ul>

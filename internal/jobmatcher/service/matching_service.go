@@ -28,10 +28,11 @@ const (
 
 // MatchingService orchestrates the matching loop.
 type MatchingService struct {
-	pool      *pgxpool.Pool
-	matchRepo *repository.MatchRepository
-	scorer    *scorer.Scorer
-	log       zerolog.Logger
+	pool            *pgxpool.Pool
+	matchRepo       *repository.MatchRepository
+	scorer          *scorer.Scorer
+	semanticScorer  *scorer.SemanticScorer // optional; nil means keyword-only mode
+	log             zerolog.Logger
 }
 
 // New creates a new MatchingService.
@@ -42,6 +43,14 @@ func New(pool *pgxpool.Pool, matchRepo *repository.MatchRepository, log zerolog.
 		scorer:    scorer.New(),
 		log:       log,
 	}
+}
+
+// WithSemanticScorer attaches a SemanticScorer for combined keyword + semantic scoring.
+// When set, the final match score = 0.6 * keyword_score + 0.4 * semantic_score.
+// When nil (default), keyword score is used as-is (fully backward-compatible).
+func (s *MatchingService) WithSemanticScorer(ss *scorer.SemanticScorer) *MatchingService {
+	s.semanticScorer = ss
+	return s
 }
 
 // RunResult summarises a matching run for one user.
@@ -102,9 +111,20 @@ func (s *MatchingService) RunForUser(ctx context.Context, userID uuid.UUID) (*Ru
 			continue
 		}
 
-		// Score
+		// Keyword score (5-dimension breakdown)
 		bd := s.scorer.Score(job, user, prefs, resume)
-		weighted := bd.Weighted()
+		keywordScore := bd.Weighted()
+
+		// Semantic score — only computed when scorer is attached and content is available.
+		// Falls back to 0.5 (neutral) internally when AI service is unreachable.
+		var weighted float64
+		if s.semanticScorer != nil && job.Description != "" && resume.RawText != "" {
+			semanticScore := s.semanticScorer.Score(ctx, resume.RawText, job.Description)
+			// Combined: 60% keyword + 40% semantic
+			weighted = 0.6*keywordScore + 0.4*semanticScore
+		} else {
+			weighted = keywordScore
+		}
 
 		if weighted < minMatchScore {
 			result.JobsFiltered++

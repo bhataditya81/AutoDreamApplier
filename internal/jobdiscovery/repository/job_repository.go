@@ -97,22 +97,27 @@ func (r *JobRepository) BulkUpsert(ctx context.Context, jobs []*models.ScrapedJo
 			INSERT INTO jobs (
 				external_id, source_board, url, title, company, location,
 				is_remote, salary_min, salary_max, salary_currency,
-				description, ats_type, apply_url, posted_at, discovered_at
+				description, ats_type, apply_url, posted_at, discovered_at,
+				is_scam, scam_score
 			) VALUES (
 				$1, $2, $3, $4, $5, $6,
 				$7, $8, $9, $10,
-				$11, $12, $13, $14, NOW()
+				$11, $12, $13, $14, NOW(),
+				$15, $16
 			)
 			ON CONFLICT (external_id, source_board)
 			DO UPDATE SET
 				title       = EXCLUDED.title,
 				description = EXCLUDED.description,
 				is_active   = true,
+				is_scam     = EXCLUDED.is_scam,
+				scam_score  = EXCLUDED.scam_score,
 				updated_at  = NOW()
 			RETURNING id, (xmax = 0) AS is_new`,
 			job.ExternalID, string(job.Source), job.URL, job.Title, job.Company,
 			job.Location, job.IsRemote, job.SalaryMin, job.SalaryMax, job.SalaryCurrency,
 			job.Description, string(atsType), job.ApplyURL, job.PostedAt,
+			job.IsScam, job.ScamScore,
 		).Scan(&id, &isNew)
 
 		if err != nil {
@@ -290,4 +295,10 @@ func detectATS(applyURL, fallbackURL string) models.ATSType {
 	default:
 		return models.ATSUnknown
 	}
+}
+
+// Pool returns the underlying connection pool.
+// Used by background services (e.g. EmbedNewJobs) that need direct DB access.
+func (r *JobRepository) Pool() *pgxpool.Pool {
+	return r.pool
 }

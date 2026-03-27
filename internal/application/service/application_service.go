@@ -59,15 +59,23 @@ func (s *Service) WithRateLimiter(rl *RateLimiter) *Service {
 }
 
 // Submit creates a new application record and enqueues Stage 1 (AI prep).
-// It automatically selects the user's primary resume.
+// If the user has any A/B-enabled resumes, one is selected via weighted random
+// sampling. Otherwise the primary resume is used.
 func (s *Service) Submit(ctx context.Context, userID, jobID, matchID uuid.UUID) (*models.Application, error) {
-	// ── Resolve primary resume ──────────────────────────────────────────────────
-	resume, err := s.repo.GetPrimaryResume(ctx, userID)
+	// ── Resolve resume (A/B selection with primary fallback) ────────────────────
+	resume, err := s.repo.GetABResume(ctx, userID)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, fmt.Errorf("no primary resume found for user: %w", ErrNotFound)
+		s.log.Warn().Err(err).Str("user_id", userID.String()).Msg("ab resume selection failed; falling back to primary")
+		resume = nil
+	}
+	if resume == nil {
+		resume, err = s.repo.GetPrimaryResume(ctx, userID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return nil, fmt.Errorf("no primary resume found for user: %w", ErrNotFound)
+			}
+			return nil, fmt.Errorf("get primary resume: %w", err)
 		}
-		return nil, fmt.Errorf("get primary resume: %w", err)
 	}
 
 	// ── Check User Preferences for AI Bypass + rate limiting ────────────────────
@@ -178,8 +186,9 @@ func (s *Service) ListForUser(
 // RecordOutcome updates the post-submission outcome of an application and
 // sends an email notification for interview/offer outcomes.
 // Valid outcomes: viewed, rejected, interview, offer.
-func (s *Service) RecordOutcome(ctx context.Context, appID, userID uuid.UUID, outcome models.ApplicationOutcome) error {
-	if err := s.repo.UpdateOutcome(ctx, appID, userID, outcome); err != nil {
+// notes is optional free-text stored in outcome_notes; pass "" to leave unchanged.
+func (s *Service) RecordOutcome(ctx context.Context, appID, userID uuid.UUID, outcome models.ApplicationOutcome, notes string) error {
+	if err := s.repo.UpdateOutcome(ctx, appID, userID, outcome, notes); err != nil {
 		return fmt.Errorf("update outcome: %w", err)
 	}
 

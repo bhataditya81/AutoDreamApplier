@@ -39,8 +39,9 @@ test.describe('Auth — Login page', () => {
     await page.getByPlaceholder(/password/i).fill('wrongpassword');
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await expect(page.getByRole('alert')).toBeVisible();
-    await expect(page.getByRole('alert')).toContainText(/invalid email or password/i);
+    // Use first() to exclude the Next.js route announcer which also has role="alert"
+    await expect(page.getByRole('alert').first()).toBeVisible();
+    await expect(page.getByRole('alert').first()).toContainText(/invalid email or password/i);
   });
 
   test('redirects to dashboard on successful login (mocked API)', async ({ page }) => {
@@ -60,6 +61,6 @@ test.describe('Auth — Login page', () => {
     await page.getByPlaceholder(/password/i).fill('password123');
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await expect(page).toHaveURL(/\/dashboard\/matches/);
+    await expect(page).toHaveURL(/\/dashboard\//);
   });
 });

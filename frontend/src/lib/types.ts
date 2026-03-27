@@ -120,7 +120,46 @@ export interface Resume {
   s3Key: string;
   isPrimary: boolean;
   interviewCount: number;
+  // A/B testing fields
+  ab_enabled: boolean;
+  ab_weight: number;
+  total_applications: number;
+  total_views: number;
+  total_interviews: number;
+  total_offers: number;
+  interview_rate: number; // computed: total_interviews / total_applications * 100
   createdAt: string;
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export interface FunnelStats {
+  applied: number;
+  viewed: number;
+  interviews: number;
+  offers: number;
+  view_rate: number;      // percent
+  interview_rate: number; // percent
+  offer_rate: number;     // percent
+}
+
+export interface DailyCount {
+  date: string;   // YYYY-MM-DD
+  count: number;
+}
+
+export interface ResumeStats {
+  resume_id: string;
+  file_name: string;
+  total_applications: number;
+  total_interviews: number;
+  total_offers: number;
+  interview_rate: number;
+}
+
+export interface CompanyStat {
+  company: string;
+  count: number;
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────
@@ -139,4 +178,28 @@ export interface ApiError {
   error: string;
   message: string;
   statusCode: number;
+}
+
+// ── Salary benchmarking ───────────────────────────────────────────────────────
+
+export interface SalaryBenchmark {
+  title_key: string;
+  location_key: string;
+  currency: string;
+  min: number;
+  p25: number;
+  median: number;
+  p75: number;
+  max: number;
+  sample_size: number;
+  updated_at: string;
+}
+
+export type MarketPosition = 'above' | 'at' | 'below' | 'unknown';
+
+export interface SalaryBenchmarkResponse {
+  benchmark: SalaryBenchmark | null;
+  job_salary_min?: number;
+  job_salary_max?: number;
+  market_position: MarketPosition;
 }

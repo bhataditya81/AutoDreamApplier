@@ -1,0 +1,81 @@
+version: "3.9"
+
+networks:
+  autodream:
+    driver: bridge
+
+services:
+  browser-pool:
+    image: ${ECR_REGISTRY}/autodreamapplier/browser-pool:${IMAGE_TAG:-latest}
+    container_name: autodream-browser-pool
+    restart: unless-stopped
+    networks:
+      - autodream
+    ports:
+      - "127.0.0.1:9222:9222"   # Only accessible from localhost (apply-engine)
+    environment:
+      - BROWSER_POOL_PORT=9222
+      - CHROMIUM_PATH=/usr/bin/chromium
+      - APP_ENV=production
+      - REDIS_URL=${REDIS_URL}
+      - AWS_REGION=${AWS_REGION}
+    shm_size: "256mb"            # Required for Chromium stability
+    security_opt:
+      - seccomp:unconfined       # Required for Chromium sandbox
+    deploy:
+      resources:
+        limits:
+          memory: 350M           # Leave headroom on 512MB t4g.nano
+
+  ai-service:
+    image: ${ECR_REGISTRY}/autodreamapplier/ai-service:${IMAGE_TAG:-latest}
+    container_name: autodream-ai-service
+    restart: unless-stopped
+    networks:
+      - autodream
+    ports:
+      - "127.0.0.1:8000:8085"   # Only accessible from localhost
+    environment:
+      - APP_ENV=production
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_RESUMES=${S3_BUCKET_RESUMES}
+      - S3_BUCKET_AI_OUTPUTS=${S3_BUCKET_SCREENSHOTS}
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+  apply-engine:
+    image: ${ECR_REGISTRY}/autodreamapplier/apply-engine:${IMAGE_TAG:-latest}
+    container_name: autodream-apply-engine
+    restart: unless-stopped
+    networks:
+      - autodream
+    ports:
+      - "8084:8084"             # Emergency stop API (restrict in SG)
+    depends_on:
+      - browser-pool
+      - ai-service
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_RESUMES=${S3_BUCKET_RESUMES}
+      - S3_BUCKET_SCREENSHOTS=${S3_BUCKET_SCREENSHOTS}
+      - SES_FROM_EMAIL=${SES_FROM_EMAIL}
+      - DASHBOARD_URL=${DASHBOARD_URL}
+      - BROWSER_POOL_URL=http://browser-pool:9222
+      - AI_SERVICE_URL=http://ai-service:8085
+      - APP_ENV=production
+      - APP_PORT=8084
+    deploy:
+      resources:
+        limits:
+          memory: 120M

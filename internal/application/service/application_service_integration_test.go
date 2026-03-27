@@ -307,7 +307,7 @@ func TestService_RecordOutcome(t *testing.T) {
 
 	// Use OutcomeViewed — does NOT trigger sendOutcomeNotification,
 	// so the nil notification client is never dereferenced.
-	if err := svc.RecordOutcome(ctx, appID, f.userID, models.OutcomeViewed); err != nil {
+	if err := svc.RecordOutcome(ctx, appID, f.userID, models.OutcomeViewed, ""); err != nil {
 		t.Fatalf("RecordOutcome: %v", err)
 	}
 
@@ -327,7 +327,7 @@ func TestService_RecordOutcome_NotFound(t *testing.T) {
 
 	svc := newTestService(pool, nil)
 
-	err := svc.RecordOutcome(ctx, uuid.New(), uuid.New(), models.OutcomeRejected)
+	err := svc.RecordOutcome(ctx, uuid.New(), uuid.New(), models.OutcomeRejected, "")
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
