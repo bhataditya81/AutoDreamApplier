@@ -51,29 +51,38 @@ authTest.describe('Matches page', () => {
         body: JSON.stringify({ data: [mockMatch], total: 1, page: 1, pageSize: 12, hasMore: false }),
       });
     });
+    // Stub salary benchmark so the match card doesn't make unmocked network calls
+    await page.route('**/api/v1/salary/benchmark**', (route) => {
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+    });
   });
 
   authTest('renders status tabs', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
+    // Wait for MatchQueue to mount — Refresh button is always rendered in the toolbar
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: 'Pending' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Approved' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Rejected' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'All' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'All', exact: true })).toBeVisible();
   });
 
   authTest('renders match card with job title and company', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Senior Frontend Engineer')).toBeVisible();
     await expect(page.getByText('TechCorp')).toBeVisible();
   });
 
   authTest('renders Approve (Apply) button on each card', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /apply/i }).first()).toBeVisible();
   });
 
   authTest('renders Skip button on each card', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /skip/i }).first()).toBeVisible();
   });
 
@@ -100,11 +109,16 @@ authTest.describe('Matches page', () => {
 
   authTest('shows Select all button after matches load', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
-    await expect(page.getByText(/select all/i)).toBeVisible();
+    // Wait for MatchQueue toolbar to mount, then wait for matches to load (bulk toolbar appears)
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/select all/i)).toBeVisible({ timeout: 10000 });
   });
 
   authTest('shows selection checkbox on individual cards', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
+    // Wait for matches to load and Select all to appear
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/select all/i)).toBeVisible({ timeout: 10000 });
     // Click "Select all" to reveal selection checkbox on the card
     await page.getByText(/select all/i).click();
     // Now the "Deselect all" text should appear
