@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers, Calendar, Inbox, TrendingUp, Zap } from "lucide-react";
+import { motion, useMotionValue, useTransform, animate, useInView } from "framer-motion";
 import { Header } from "@/components/layout/header";
 import {
   getDashboardStats,
@@ -12,25 +13,49 @@ import {
 import type { Application, UserPreferences } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
+// ── Motion variants ────────────────────────────────────────────────────────────
+
+const fadeSlideUp = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06, delayChildren: 0.08 } },
+};
+
+// ── Animated counter hook ─────────────────────────────────────────────────────
+
+function useCountUp(target: number, duration = 0.8) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, Math.round);
+  const inView = useInView(ref as React.RefObject<Element>, { once: true });
+
+  useEffect(() => {
+    if (inView) animate(count, target, { duration, ease: "easeOut" });
+  }, [inView, target, count, duration]);
+
+  return { ref, rounded };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Returns the last 7 days as { label, count } using createdAt dates. */
 function buildWeeklyActivity(applications: Application[]) {
   const days: { label: string; date: string; count: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const isoDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    const isoDate = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString("en-US", { weekday: "short" });
     days.push({ label, date: isoDate, count: 0 });
   }
-
   for (const app of applications) {
     const appDate = app.createdAt?.slice(0, 10);
     const day = days.find((d) => d.date === appDate);
     if (day) day.count++;
   }
-
   return days;
 }
 
@@ -79,35 +104,52 @@ function StatCardSkeleton() {
   );
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
+// ── Animated stat card ────────────────────────────────────────────────────────
 
 interface StatCardProps {
   label: string;
-  value: string | number;
+  value: number | string;
   sub: string;
   icon: React.ReactNode;
+  isNumber?: boolean;
 }
 
-function StatCard({ label, value, sub, icon }: StatCardProps) {
+function StatCard({ label, value, sub, icon, isNumber }: StatCardProps) {
+  const numValue = typeof value === "number" ? value : 0;
+  const { ref, rounded } = useCountUp(numValue);
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <motion.div
+      variants={fadeSlideUp}
+      whileHover={{ y: -3, boxShadow: "0 8px 24px rgba(99,102,241,.12)" }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
+    >
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-gray-500">{label}</span>
         <span className="text-gray-400">{icon}</span>
       </div>
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
+      <p className="text-3xl font-bold text-gray-900">
+        {isNumber ? (
+          <motion.span ref={ref}>{rounded}</motion.span>
+        ) : (
+          value
+        )}
+      </p>
       <p className="text-xs text-gray-400 mt-1">{sub}</p>
-    </div>
+    </motion.div>
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Page data ─────────────────────────────────────────────────────────────────
 
 interface PageData {
   stats: DashboardStats;
   recentApps: Application[];
   prefs: UserPreferences;
 }
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
   const [data, setData] = useState<PageData | null>(null);
@@ -135,7 +177,6 @@ export default function OverviewPage() {
     load();
   }, [load]);
 
-  // ── Error state ──────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="flex flex-col h-full">
@@ -144,25 +185,20 @@ export default function OverviewPage() {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center max-w-sm w-full">
             <p className="text-sm font-medium text-red-700 mb-1">Failed to load overview</p>
             <p className="text-xs text-red-500 mb-4">{error}</p>
-            <Button variant="outline" size="sm" onClick={load}>
-              Retry
-            </Button>
+            <Button variant="outline" size="sm" onClick={load}>Retry</Button>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── Loading skeleton ─────────────────────────────────────────────────────────
   if (loading || !data) {
     return (
       <div className="flex flex-col h-full">
         <Header title="Overview" subtitle="Your job search at a glance." />
         <div className="flex-1 px-6 pb-8 pt-6 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <StatCardSkeleton key={i} />
-            ))}
+            {[0, 1, 2, 3, 4].map((i) => <StatCardSkeleton key={i} />)}
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pulse">
             <div className="h-4 w-32 bg-gray-200 rounded mb-4" />
@@ -197,6 +233,7 @@ export default function OverviewPage() {
   const autoApplyOn = prefs.autoApplyEnabled ?? false;
   const weeklyDays = buildWeeklyActivity(recentApps);
   const maxCount = Math.max(1, ...weeklyDays.map((d) => d.count));
+  const dailyPct = Math.min(100, (stats.appliedToday / Math.max(1, stats.dailyLimit)) * 100);
 
   return (
     <div className="flex flex-col h-full">
@@ -206,41 +243,43 @@ export default function OverviewPage() {
         actions={
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-              autoApplyOn
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 text-gray-500"
+              autoApplyOn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
             }`}
           >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                autoApplyOn ? "bg-green-500" : "bg-gray-400"
-              }`}
-            />
+            <span className={`h-1.5 w-1.5 rounded-full ${autoApplyOn ? "bg-green-500" : "bg-gray-400"}`} />
             {autoApplyOn ? "Auto-Apply Active" : "Manual Mode"}
           </span>
         }
       />
 
       <div className="flex-1 px-6 pb-8 pt-6 space-y-6">
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Stat cards */}
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
+        >
           <StatCard
             label="Total Applied"
             value={stats.applicationsThisWeek}
             sub="This week"
             icon={<Layers className="h-4 w-4" />}
+            isNumber
           />
           <StatCard
             label="Interviews"
             value={stats.interviewsThisMonth}
             sub="This month"
             icon={<Calendar className="h-4 w-4" />}
+            isNumber
           />
           <StatCard
             label="Pending Matches"
             value={stats.pendingMatches}
             sub="Awaiting review"
             icon={<Inbox className="h-4 w-4" />}
+            isNumber
           />
           <StatCard
             label="Success Rate"
@@ -249,41 +288,54 @@ export default function OverviewPage() {
             icon={<TrendingUp className="h-4 w-4" />}
           />
           {/* Daily rate limit card */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <motion.div
+            variants={fadeSlideUp}
+            whileHover={{ y: -3, boxShadow: "0 8px 24px rgba(99,102,241,.12)" }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
+          >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-gray-500">Today&apos;s Applications</span>
               <Zap className="h-4 w-4 text-gray-400" />
             </div>
             <p className="text-3xl font-bold text-gray-900">{stats.appliedToday}</p>
             <p className="text-xs text-gray-400 mt-1">of {stats.dailyLimit} limit</p>
-            {/* Progress bar */}
             <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
+              <motion.div
+                initial={{ width: "0%" }}
+                animate={{
+                  width: `${dailyPct}%`,
+                }}
+                transition={{ duration: 0.7, ease: [0.4, 0, 0.2, 1], delay: 0.3 }}
+                className={`h-full rounded-full ${
                   stats.appliedToday >= stats.dailyLimit
                     ? "bg-red-500"
                     : stats.appliedToday / stats.dailyLimit > 0.8
                     ? "bg-amber-400"
-                    : "bg-brand-500"
+                    : "bg-gradient-to-r from-indigo-500 to-violet-500"
                 }`}
-                style={{
-                  width: `${Math.min(100, (stats.appliedToday / Math.max(1, stats.dailyLimit)) * 100)}%`,
-                }}
               />
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        {/* ── Weekly activity bar chart ── */}
+        {/* Weekly activity bar chart */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Weekly Activity</h2>
           <div className="flex items-end gap-2 h-24">
-            {weeklyDays.map((d) => (
+            {weeklyDays.map((d, i) => (
               <div key={d.date} className="flex flex-col items-center gap-1 flex-1">
                 <div
-                  className="w-full bg-brand-500 rounded-t transition-all"
-                  style={{ height: `${Math.max(4, (d.count / maxCount) * 80)}px` }}
-                />
+                  className="w-full bg-gray-100 rounded-t relative overflow-hidden"
+                  style={{ height: "80px" }}
+                >
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.max(4, (d.count / maxCount) * 80)}px` }}
+                    transition={{ delay: i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    className="absolute bottom-0 w-full rounded-t-sm bg-indigo-500/80"
+                  />
+                </div>
                 <span className="text-xs text-gray-400">{d.label}</span>
               </div>
             ))}
@@ -291,15 +343,24 @@ export default function OverviewPage() {
           <p className="text-xs text-gray-400 mt-2">Applications submitted per day (last 7 days)</p>
         </div>
 
-        {/* ── Recent applications ── */}
+        {/* Recent applications */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Recent Applications</h2>
           {recentApps.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">No applications yet.</p>
           ) : (
-            <ul className="divide-y divide-gray-50">
+            <motion.ul
+              variants={staggerContainer}
+              initial="hidden"
+              animate="visible"
+              className="divide-y divide-gray-50"
+            >
               {recentApps.map((app) => (
-                <li key={app.id} className="flex items-center justify-between py-2.5">
+                <motion.li
+                  key={app.id}
+                  variants={fadeSlideUp}
+                  className="flex items-center justify-between py-2.5"
+                >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {app.job?.title ?? "Unknown Role"}
@@ -310,15 +371,13 @@ export default function OverviewPage() {
                     </p>
                   </div>
                   <span
-                    className={`ml-4 shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(
-                      app.status
-                    )}`}
+                    className={`ml-4 shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(app.status)}`}
                   >
                     {statusLabel(app.status)}
                   </span>
-                </li>
+                </motion.li>
               ))}
-            </ul>
+            </motion.ul>
           )}
         </div>
       </div>
