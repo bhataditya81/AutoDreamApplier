@@ -60,3 +60,55 @@
     overflow: hidden;
   }
 }
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  --gradient-brand:        linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --gradient-brand-hover:  linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --gradient-glass:        linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
+  --gradient-sidebar-active: linear-gradient(90deg, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0.04) 100%);
+}
+
+/* ── Glassmorphism utilities ───────────────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass { background: rgba(255, 255, 255, 0.97); }
+  }
+  .glass-dark {
+    background: rgba(30, 41, 59, 0.72);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+  }
+  .gradient-text {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-bg {
+    background: var(--gradient-brand);
+  }
+  .gradient-bg-hover:hover {
+    background: var(--gradient-brand-hover);
+  }
+}
+
+/* ── Sidebar dark scrollbar ────────────────────────────────────────────── */
+.sidebar-scroll::-webkit-scrollbar       { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ── Shimmer skeleton ──────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}

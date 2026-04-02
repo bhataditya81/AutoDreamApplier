@@ -1,6 +1,8 @@
+'use client'
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -14,7 +16,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-brand-600 text-white shadow hover:bg-brand-700 active:bg-brand-800",
+          "gradient-bg gradient-bg-hover text-white shadow",
         secondary:
           "bg-brand-100 text-brand-700 hover:bg-brand-200",
         outline:
@@ -52,19 +54,41 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading, children, disabled, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
+    if (asChild) {
+      return (
+        <Slot
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          {...(props as React.HTMLAttributes<HTMLElement>)}
+        >
+          {children}
+        </Slot>
+      );
+    }
+
     return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        disabled={disabled ?? loading}
-        {...props}
+      <motion.div
+        className="inline-flex"
+        whileTap={{ scale: 0.97 }}
+        whileHover={variant === "default" ? { filter: "brightness(1.08)" } : undefined}
+        transition={{ duration: 0.1 }}
+        style={{ display: "inline-flex" }}
       >
-        {asChild ? children : (
-          <>
+        <button
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          disabled={disabled ?? loading}
+          {...props}
+        >
+          <AnimatePresence initial={false}>
             {loading && (
-              <svg
-                className="animate-spin h-4 w-4"
+              <motion.svg
+                key="spinner"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.15 }}
+                className="h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -72,12 +96,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
               >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
+              </motion.svg>
             )}
-            {children}
-          </>
-        )}
-      </Comp>
+          </AnimatePresence>
+          {children}
+        </button>
+      </motion.div>
     );
   }
 );
