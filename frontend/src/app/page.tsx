@@ -1,7 +1,15 @@
-import { redirect } from "next/navigation";
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { isAuthenticated } from '@/lib/auth';
+import LandingPage from './(marketing)/page';
 
-// Root page: redirect to dashboard (authenticated) or login.
-// Actual auth guard is handled inside the dashboard layout.
 export default function RootPage() {
-  redirect("/dashboard/overview");
+  const router = useRouter();
+  useEffect(() => {
+    if (isAuthenticated()) {
+      router.replace('/dashboard/overview');
+    }
+  }, [router]);
+  return <LandingPage />;
 }
