@@ -21,6 +21,7 @@ type Config struct {
 	AI        AIConfig
 	Browser   BrowserConfig
 	RateLimit RateLimitConfig
+	Scheduler SchedulerConfig
 }
 
 type AppConfig struct {
@@ -106,7 +107,12 @@ type BrowserConfig struct {
 type RateLimitConfig struct {
 	Indeed    int
 	Glassdoor int
-	LinkedIn int
+	LinkedIn  int
+}
+
+type SchedulerConfig struct {
+	TickInterval     time.Duration // how often the auto-apply scheduler wakes up
+	MaxMatchesPerRun int           // max matches submitted per user per tick
 }
 
 // Load reads configuration from environment variables.
@@ -128,8 +134,8 @@ func Load() *Config {
 			Password:        getEnv("DB_PASSWORD", "autodream_dev"),
 			Name:            getEnv("DB_NAME", "autodreamapplier"),
 			SSLMode:         getEnv("DB_SSL_MODE", "disable"),
-			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 5),
+			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 10),
+			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 2),
 			ConnMaxLifetime: getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Redis: RedisConfig{
@@ -176,6 +182,10 @@ func Load() *Config {
 			Indeed:    getEnvInt("RATE_LIMIT_INDEED", 10),
 			Glassdoor: getEnvInt("RATE_LIMIT_GLASSDOOR", 8),
 			LinkedIn:  getEnvInt("RATE_LIMIT_LINKEDIN", 3),
+		},
+		Scheduler: SchedulerConfig{
+			TickInterval:     getEnvDuration("SCHEDULER_TICK_INTERVAL", 1*time.Hour),
+			MaxMatchesPerRun: getEnvInt("SCHEDULER_MAX_MATCHES_PER_RUN", 20),
 		},
 	}
 

@@ -81,15 +81,20 @@ All MVP-A components are implemented, tested, and passing in local dev mode.
 
 All branches are **independent** and can be developed simultaneously. Integration points are documented in each task. Merge order: infra → job-boards → ats-plugins → auto-apply → ai-service → notifications → frontend-v2.
 
-| Branch | Focus | Effort | Integrates With |
+| Branch | Focus | Status | Integrates With |
 |--------|-------|--------|-----------------|
-| `feat/infra-staging` | AWS staging + CI/CD | 5 days | All (deploy target) |
-| `feat/job-boards` | ZipRecruiter + LinkedIn scrapers | 6 days | `feat/auto-apply` (match feed) |
-| `feat/ats-plugins` | Lever + Workday + ATS auto-detect | 7 days | `feat/ai-service` (apply worker) |
-| `feat/auto-apply` | Auto-approve engine + scheduling | 5 days | `feat/job-boards`, `feat/notifications` |
-| `feat/ai-service` | Python FastAPI AI service | 8 days | `feat/ats-plugins` (worker calls it) |
-| `feat/notifications` | Weekly digest + Slack/Discord | 4 days | `feat/auto-apply` (events) |
-| `feat/frontend-v2` | Dashboard improvements | 7 days | All backend branches |
+| `feat/infra-staging` | AWS staging + CI/CD | ✅ Complete | All (deploy target) |
+| `feat/job-boards` | ZipRecruiter + LinkedIn scrapers | ✅ Complete | `feat/auto-apply` (match feed) |
+| `feat/ats-plugins` | Lever + Workday + ATS auto-detect | ✅ Complete | `feat/ai-service` (apply worker) |
+| `feat/auto-apply` | Auto-approve engine + scheduling | ✅ Complete (scheduler config-driven, 1h tick) | `feat/job-boards`, `feat/notifications` |
+| `feat/ai-service` | Python FastAPI AI service | ✅ Complete (34/34 tests passing) | `feat/ats-plugins` (worker calls it) |
+| `feat/notifications` | Weekly digest + Slack/Discord | ✅ Complete | `feat/auto-apply` (events) |
+| `feat/frontend-v2` | Dashboard improvements | ✅ Complete (zero TS errors, 13 routes) | All backend branches |
+
+### Scheduler Changes (2026-03-30)
+- `tickInterval` moved from hardcoded `2m` → config-driven via `SCHEDULER_TICK_INTERVAL` (default `1h`)
+- `maxMatchesPerRun` moved to config via `SCHEDULER_MAX_MATCHES_PER_RUN` (default `20`)
+- `DB_MAX_OPEN_CONNS` default reduced 25 → 10; `DB_MAX_IDLE_CONNS` 5 → 2
 
 ---
 
@@ -220,7 +225,7 @@ ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 
 ---
 
-### BRANCH: `feat/job-boards`
+### BRANCH: `feat/job-boards` ✅ COMPLETE
 
 **Owner:** Backend developer (Go)
 **Prerequisite:** None — existing `cmd/job-discovery/` + `internal/job/` are the base
@@ -363,7 +368,7 @@ func (s *LinkedInScraper) checkDailyLimit(ctx context.Context, userID uuid.UUID)
 
 ---
 
-### BRANCH: `feat/ats-plugins`
+### BRANCH: `feat/ats-plugins` ✅ COMPLETE
 
 **Owner:** Backend developer (Go)
 **Prerequisite:** None — ATS plugin system already complete

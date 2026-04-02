@@ -180,11 +180,23 @@ func main() {
 		concurrency = 1 // single worker slot is enough for staging
 	}
 
+	// Compute per-queue worker counts. Use proportional allocation but guarantee
+	// at least 1 worker per queue so River doesn't panic on small concurrency
+	// values (e.g. concurrency=1 in staging: 1*3/10 = 0 in integer division).
+	aiWorkers := concurrency * 6 / 10
+	if aiWorkers < 1 {
+		aiWorkers = 1
+	}
+	browserWorkers := concurrency * 3 / 10
+	if browserWorkers < 1 {
+		browserWorkers = 1
+	}
+
 	riverClient, err := river.NewClient[pgx.Tx](riverpgxv5.New(pool), &river.Config{
 		Workers: workerRegistry,
 		Queues: map[string]river.QueueConfig{
-			tasks.QueueAIPrep:       {MaxWorkers: concurrency * 6 / 10},
-			tasks.QueueBrowserApply: {MaxWorkers: concurrency * 3 / 10},
+			tasks.QueueAIPrep:       {MaxWorkers: aiWorkers},
+			tasks.QueueBrowserApply: {MaxWorkers: browserWorkers},
 		},
 		// Fallback poll interval — LISTEN/NOTIFY wakes workers instantly.
 		// Set high to eliminate background database polling.
@@ -201,7 +213,10 @@ func main() {
 	svc := service.New(repo, riverClient, browserClient, notifier, log)
 
 	// ── Auto-apply scheduler ──────────────────────────────────────────────────
-	sched := scheduler.New(repo, mRepo, svc, log)
+	sched := scheduler.New(repo, mRepo, svc, log,
+		cfg.Scheduler.TickInterval,
+		cfg.Scheduler.MaxMatchesPerRun,
+	)
 
 	// ── Weekly digest scheduler ───────────────────────────────────────────────
 	// Sends a summary email to every active user on Mondays at 09:00 UTC.

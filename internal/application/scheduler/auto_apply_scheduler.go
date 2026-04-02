@@ -18,13 +18,6 @@ import (
 )
 
 const (
-	// tickInterval is how often the scheduler wakes up to look for work.
-	tickInterval = 2 * time.Minute
-
-	// maxMatchesPerRun caps matches processed per user per tick.
-	// Keeps each tick fast and prevents thundering-herd on the browser pool.
-	maxMatchesPerRun = 5
-
 	// defaultBusinessHourStart / End define the UTC fallback window.
 	defaultBusinessHourStart = 9  // 09:00 UTC
 	defaultBusinessHourEnd   = 17 // 17:00 UTC
@@ -32,10 +25,12 @@ const (
 
 // Scheduler picks up approved matches for auto-mode users and submits them.
 type Scheduler struct {
-	appRepo   *appRepo.ApplicationRepository
-	matchRepo *matchRepo.MatchRepository
-	svc       *appSvc.Service
-	log       zerolog.Logger
+	appRepo          *appRepo.ApplicationRepository
+	matchRepo        *matchRepo.MatchRepository
+	svc              *appSvc.Service
+	log              zerolog.Logger
+	tickInterval     time.Duration
+	maxMatchesPerRun int
 }
 
 // New creates a Scheduler.
@@ -44,25 +39,29 @@ func New(
 	mr *matchRepo.MatchRepository,
 	svc *appSvc.Service,
 	log zerolog.Logger,
+	tickInterval time.Duration,
+	maxMatchesPerRun int,
 ) *Scheduler {
 	return &Scheduler{
-		appRepo:   ar,
-		matchRepo: mr,
-		svc:       svc,
-		log:       log.With().Str("component", "auto-apply-scheduler").Logger(),
+		appRepo:          ar,
+		matchRepo:        mr,
+		svc:              svc,
+		log:              log.With().Str("component", "auto-apply-scheduler").Logger(),
+		tickInterval:     tickInterval,
+		maxMatchesPerRun: maxMatchesPerRun,
 	}
 }
 
 // Run starts the scheduler loop. It blocks until ctx is cancelled.
-// Intended to be launched as a goroutine alongside the HTTP and Asynq servers.
+// Intended to be launched as a goroutine alongside the HTTP and River servers.
 func (s *Scheduler) Run(ctx context.Context) {
 	s.log.Info().
-		Dur("interval", tickInterval).
+		Dur("interval", s.tickInterval).
 		Int("default_biz_hour_start_utc", defaultBusinessHourStart).
 		Int("default_biz_hour_end_utc", defaultBusinessHourEnd).
 		Msg("auto-apply scheduler started")
 
-	ticker := time.NewTicker(tickInterval)
+	ticker := time.NewTicker(s.tickInterval)
 	defer ticker.Stop()
 
 	// Run once immediately so we don't wait a full tick after startup.
@@ -166,10 +165,10 @@ func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 		return
 	}
 
-	// Cap at maxMatchesPerRun to keep each tick fast.
+	// Cap at configured maxMatchesPerRun to keep each tick bounded.
 	limit := remaining
-	if limit > maxMatchesPerRun {
-		limit = maxMatchesPerRun
+	if limit > s.maxMatchesPerRun {
+		limit = s.maxMatchesPerRun
 	}
 
 	// Fetch approved matches for this user.
@@ -192,7 +191,6 @@ func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 				Str("match_id", m.ID.String()).
 				Str("job_id", m.JobID.String()).
 				Msg("auto-apply submission failed")
-			// Continue to the next match rather than aborting the user.
 			continue
 		}
 		submitted++
