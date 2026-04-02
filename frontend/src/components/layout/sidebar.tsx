@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   Layers,
@@ -12,18 +13,17 @@ import {
   LogOut,
   BarChart2,
   LineChart,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { logout } from "@/lib/auth";
-import { getPreferences } from "@/lib/api";
+} from 'lucide-react';
+import { logout } from '@/lib/auth';
+import { getPreferences } from '@/lib/api';
 
 const navItems = [
-  { href: "/dashboard/overview",     label: "Overview",     icon: BarChart2 },
-  { href: "/dashboard/matches",      label: "Match Queue",  icon: LayoutDashboard },
-  { href: "/dashboard/applications", label: "Applications", icon: Layers },
-  { href: "/dashboard/analytics",    label: "Analytics",    icon: LineChart },
-  { href: "/dashboard/resumes",      label: "Resumes",      icon: FileText },
-  { href: "/dashboard/settings",     label: "Settings",     icon: Settings },
+  { href: '/dashboard/overview',     label: 'Overview',      icon: BarChart2 },
+  { href: '/dashboard/matches',      label: 'Match Queue',   icon: LayoutDashboard },
+  { href: '/dashboard/applications', label: 'Applications',  icon: Layers },
+  { href: '/dashboard/analytics',    label: 'Analytics',     icon: LineChart },
+  { href: '/dashboard/resumes',      label: 'Resumes',       icon: FileText },
+  { href: '/dashboard/settings',     label: 'Settings',      icon: Settings },
 ] as const;
 
 export function Sidebar() {
@@ -37,44 +37,66 @@ export function Sidebar() {
   }, []);
 
   return (
-    <aside className="flex flex-col w-60 min-h-screen border-r border-border bg-white shrink-0">
+    <motion.aside
+      initial={{ x: -20, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      className="flex flex-col w-64 min-h-screen bg-[#0f172a] border-r border-[#334155] shrink-0"
+    >
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 h-16 border-b border-border shrink-0">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
-          <Zap className="h-4 w-4 text-white" />
+      <div className="h-16 flex items-center px-5 border-b border-[#334155] shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--gradient-brand)' }}
+          >
+            <Zap className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-white font-semibold text-sm tracking-tight">AutoDream</span>
+          <span className="text-[#6366f1] font-semibold text-sm">Applier</span>
         </div>
-        <span className="font-semibold text-gray-900 text-sm tracking-tight">
-          AutoDream
-        </span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 py-4 overflow-y-auto sidebar-scroll">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+          const isActive = pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                active
-                  ? "bg-brand-50 text-brand-700 font-medium"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              )}
+              className="relative flex items-center gap-3 px-3 py-2.5 mx-2 rounded-lg group"
             >
+              {isActive && (
+                <motion.div
+                  layoutId="sidebar-active-pill"
+                  className="absolute inset-0 rounded-lg border-l-2 border-indigo-500"
+                  style={{ background: 'var(--gradient-sidebar-active)' }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               <Icon
-                className={cn("h-4 w-4 shrink-0", active ? "text-brand-600" : "text-gray-400")}
+                className={`relative z-10 w-4 h-4 shrink-0 ${
+                  isActive
+                    ? 'text-indigo-400'
+                    : 'text-[#64748b] group-hover:text-[#94a3b8]'
+                }`}
                 aria-hidden="true"
               />
-              {label}
-              {href === "/dashboard/matches" && autoApplyOn && (
-                <span
-                  title="Auto-Apply is active"
-                  className="ml-auto flex h-4 items-center rounded-full bg-green-500 px-1.5 text-[9px] font-semibold text-white leading-none"
-                >
-                  AUTO
-                </span>
+              <span
+                className={`relative z-10 text-sm font-medium transition-colors duration-150 ${
+                  isActive
+                    ? 'text-[#f1f5f9]'
+                    : 'text-[#94a3b8] group-hover:text-[#f1f5f9]'
+                }`}
+              >
+                {label}
+              </span>
+              {href === '/dashboard/matches' && autoApplyOn && (
+                <div className="relative ml-auto flex items-center justify-center w-2 h-2">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2 h-2 rounded-full bg-green-500" />
+                </div>
               )}
             </Link>
           );
@@ -82,15 +104,15 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 border-t border-border">
+      <div className="border-t border-[#334155] px-3 py-4">
         <button
           onClick={logout}
-          className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+          className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#94a3b8] hover:text-red-400 hover:bg-red-500/10 transition-colors duration-150"
         >
-          <LogOut className="h-4 w-4 text-gray-400" aria-hidden="true" />
+          <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
           Log out
         </button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }
