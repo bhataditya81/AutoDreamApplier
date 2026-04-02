@@ -1,3 +1,6 @@
+'use client';
+
+import { motion } from "framer-motion";
 import { Check, Loader2, X, Clock } from "lucide-react";
 import type { ApplicationStatus, ApplicationOutcome } from "@/lib/types";
 
@@ -50,12 +53,16 @@ export function StatusTimeline({ status, outcome }: StatusTimelineProps) {
           const isDone = !isFailed && currentIndex > stepIndex;
           const isActive = !isFailed && currentIndex === stepIndex;
           const isError = isFailed && i === PIPELINE_STEPS.length - 1;
+          const stepCompleted = isDone;
 
           return (
             <div key={step.key} className="flex items-center flex-1">
-              {/* Node */}
+              {/* Animated node */}
               <div className="flex flex-col items-center">
-                <div
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.08, type: 'spring', stiffness: 400, damping: 25 }}
                   className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-colors ${
                     isDone
                       ? "bg-brand-600 border-brand-600"
@@ -75,7 +82,7 @@ export function StatusTimeline({ status, outcome }: StatusTimelineProps) {
                   ) : (
                     <Clock className="h-3 w-3 text-gray-300" />
                   )}
-                </div>
+                </motion.div>
                 <span
                   className={`text-[10px] mt-1 font-medium whitespace-nowrap ${
                     isDone || isActive
@@ -93,13 +100,17 @@ export function StatusTimeline({ status, outcome }: StatusTimelineProps) {
                 </span>
               </div>
 
-              {/* Connector */}
+              {/* Animated connector line */}
               {i < PIPELINE_STEPS.length - 1 && (
-                <div
-                  className={`flex-1 h-0.5 mx-0.5 mb-4 ${
-                    isDone ? "bg-brand-500" : "bg-gray-200"
-                  }`}
-                />
+                <div className="flex-1 h-0.5 mx-0.5 mb-4 bg-gray-200 overflow-hidden rounded-full">
+                  <motion.div
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: stepCompleted ? 1 : 0 }}
+                    style={{ originX: 0 }}
+                    transition={{ duration: 0.4, delay: i * 0.08 + 0.1 }}
+                    className="h-0.5 w-full bg-indigo-500"
+                  />
+                </div>
               )}
             </div>
           );
@@ -108,9 +119,14 @@ export function StatusTimeline({ status, outcome }: StatusTimelineProps) {
 
       {/* Outcome badge */}
       {outcome && (
-        <p className={`text-xs font-semibold ${OUTCOME_COLORS[outcome]}`}>
+        <motion.p
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className={`text-xs font-semibold ${OUTCOME_COLORS[outcome]}`}
+        >
           {OUTCOME_LABELS[outcome]}
-        </p>
+        </motion.p>
       )}
     </div>
   );

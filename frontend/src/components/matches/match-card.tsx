@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
 import {
   Building2,
   MapPin,
@@ -18,6 +19,7 @@ import { setMatchFeedback, updateMatchStatus, type MatchStatusUpdateResponse } f
 import { formatSalary, scoreColor, scorePercent, timeAgo } from "@/lib/utils";
 import type { Match } from "@/lib/types";
 import { SalaryBenchmarkBadge } from "@/components/salary/salary-benchmark-badge";
+import { fadeSlideUp, hoverLift } from "@/lib/motion";
 
 interface MatchCardProps {
   match: Match;
@@ -26,6 +28,19 @@ interface MatchCardProps {
   selected?: boolean;
   /** Called when the user toggles the selection checkbox */
   onToggleSelect?: (id: string) => void;
+}
+
+/** Animated count-up for the match score percentage */
+function AnimatedScore({ value }: { value: number }) {
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, Math.round);
+
+  useEffect(() => {
+    const controls = animate(count, value, { duration: 0.6, ease: "easeOut" });
+    return controls.stop;
+  }, [count, value]);
+
+  return <motion.span>{rounded}</motion.span>;
 }
 
 export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCardProps) {
@@ -77,190 +92,225 @@ export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCa
   }
 
   const { job } = match;
-  const scoreText = scorePercent(match.matchScore);
   const scoreClass = scoreColor(match.matchScore);
+  const matchScore = Math.round((match.matchScore ?? 0) * 100);
 
   return (
-    <Card
-      className={`hover:shadow-card-hover transition-shadow relative ${
-        selected ? "ring-2 ring-brand-500" : ""
-      }`}
+    <motion.div
+      variants={fadeSlideUp}
+      layout
+      whileHover={hoverLift.whileHover}
+      whileTap={hoverLift.whileTap}
+      transition={hoverLift.transition}
+      exit={{ opacity: 0, scale: 0.9, y: -8, transition: { duration: 0.18 } }}
     >
-      {/* Selection checkbox — only rendered when bulk-select mode is active */}
-      {onToggleSelect && (
-        <button
-          type="button"
-          aria-label={selected ? "Deselect" : "Select"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSelect(match.id);
-          }}
-          className={`absolute top-3 left-3 z-10 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
-            selected
-              ? "bg-brand-500 border-brand-500 text-white"
-              : "border-gray-300 bg-white hover:border-brand-400"
-          }`}
-        >
-          {selected && (
-            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M2 6l3 3 5-5"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-        </button>
-      )}
-
-      <CardContent className={`pt-5 ${onToggleSelect ? "pl-10" : ""}`}>
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex-1 min-w-0">
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-1 font-semibold text-gray-900 hover:text-brand-600 transition-colors text-sm leading-tight"
+      <Card
+        className={`relative ${selected ? "ring-2 ring-brand-500" : ""}`}
+      >
+        {/* Selection checkbox — only rendered when bulk-select mode is active */}
+        <AnimatePresence>
+          {onToggleSelect && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              className="absolute top-3 left-3 z-10"
             >
-              {job.title}
-              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </a>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <Building2 className="h-3.5 w-3.5 text-gray-400" />
-              <span className="text-sm text-gray-600 truncate">{job.company}</span>
-            </div>
-          </div>
-
-          {/* Match score pill */}
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <span className={`text-lg font-bold tabular-nums ${scoreClass}`}>{scoreText}</span>
-            <span className="text-xs text-gray-400">match</span>
-          </div>
-        </div>
-
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-3">
-          <span className="flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
-            {job.isRemote ? "Remote" : job.location}
-          </span>
-          <span className="flex items-center gap-1">
-            <DollarSign className="h-3 w-3" />
-            {formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {timeAgo(match.createdAt)}
-          </span>
-        </div>
-
-        {/* Salary benchmark badge */}
-        {job.title && (
-          <SalaryBenchmarkBadge
-            title={job.title}
-            location={job.location ?? ''}
-            salaryMin={job.salaryMin}
-            salaryMax={job.salaryMax}
-          />
-        )}
-
-        {/* Score breakdown */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          {Object.entries(match.matchBreakdown).map(([key, val]) => (
-            <div key={key} className="flex items-center gap-1 text-xs">
-              <span className="text-gray-400 capitalize">{key}</span>
-              <span className={`font-semibold ${scoreColor(val)}`}>
-                {scorePercent(val)}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Feedback row — rate match quality (for ML training) */}
-        <div className="flex items-center gap-2 mb-3 pt-2 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Rate this match:</span>
-          <button
-            type="button"
-            aria-label="Good match"
-            onClick={() => handleFeedback("thumbs_up")}
-            disabled={!!feedbackLoading}
-            className={`p-1 rounded transition-colors disabled:opacity-50 ${
-              feedback === "thumbs_up"
-                ? "text-green-600 bg-green-50"
-                : "text-gray-400 hover:text-green-600 hover:bg-green-50"
-            }`}
-          >
-            <ThumbsUp
-              className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_up" ? "animate-pulse" : ""}`}
-            />
-          </button>
-          <button
-            type="button"
-            aria-label="Poor match"
-            onClick={() => handleFeedback("thumbs_down")}
-            disabled={!!feedbackLoading}
-            className={`p-1 rounded transition-colors disabled:opacity-50 ${
-              feedback === "thumbs_down"
-                ? "text-red-500 bg-red-50"
-                : "text-gray-400 hover:text-red-500 hover:bg-red-50"
-            }`}
-          >
-            <ThumbsDown
-              className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_down" ? "animate-pulse" : ""}`}
-            />
-          </button>
-        </div>
-
-        {/* Badges */}
-        <div className="flex flex-wrap gap-1.5">
-          <Badge variant="default">{job.sourceBoard}</Badge>
-          {job.atsType && job.atsType !== "unknown" && (
-            <Badge variant="brand">
-              <Zap className="h-3 w-3" />
-              {job.atsType}
-            </Badge>
+              <button
+                type="button"
+                aria-label={selected ? "Deselect" : "Select"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect(match.id);
+                }}
+                className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
+                  selected
+                    ? "bg-brand-500 border-brand-500 text-white"
+                    : "border-gray-300 bg-white hover:border-brand-400"
+                }`}
+              >
+                {selected && (
+                  <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M2 6l3 3 5-5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </button>
+            </motion.div>
           )}
-          {job.isRemote && <Badge variant="success">Remote</Badge>}
-          {job.isScam && <Badge variant="danger">Potential Scam</Badge>}
-        </div>
-      </CardContent>
+        </AnimatePresence>
 
-      <CardFooter className="gap-2">
-        <Button
-          variant="success"
-          size="sm"
-          className="flex-1"
-          onClick={handleApprove}
-          loading={loading === "approve"}
-          disabled={!!loading}
-        >
-          <ThumbsUp className="h-3.5 w-3.5" />
-          Apply
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={handleReject}
-          loading={loading === "reject"}
-          disabled={!!loading}
-        >
-          <ThumbsDown className="h-3.5 w-3.5" />
-          Skip
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-        >
-          <a href={job.url} target="_blank" rel="noopener noreferrer">
-            View
-          </a>
-        </Button>
-      </CardFooter>
-    </Card>
+        <CardContent className={`pt-5 ${onToggleSelect ? "pl-10" : ""}`}>
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex-1 min-w-0">
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-1 font-semibold text-gray-900 hover:text-brand-600 transition-colors text-sm leading-tight"
+              >
+                {job.title}
+                <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </a>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <Building2 className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-sm text-gray-600 truncate">{job.company}</span>
+              </div>
+            </div>
+
+            {/* Match score pill with animated count-up */}
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className={`text-lg font-bold tabular-nums ${scoreClass}`}>
+                <AnimatedScore value={matchScore} />%
+              </span>
+              <span className="text-xs text-gray-400">match</span>
+            </div>
+          </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-3">
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              {job.isRemote ? "Remote" : job.location}
+            </span>
+            <span className="flex items-center gap-1">
+              <DollarSign className="h-3 w-3" />
+              {formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {timeAgo(match.createdAt)}
+            </span>
+          </div>
+
+          {/* Salary benchmark badge */}
+          {job.title && (
+            <SalaryBenchmarkBadge
+              title={job.title}
+              location={job.location ?? ''}
+              salaryMin={job.salaryMin}
+              salaryMax={job.salaryMax}
+            />
+          )}
+
+          {/* Score breakdown with animated bars */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {Object.entries(match.matchBreakdown).map(([key, val], index) => (
+              <div key={key} className="flex flex-col gap-0.5 text-xs min-w-[60px]">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-gray-400 capitalize">{key}</span>
+                  <span className={`font-semibold ${scoreColor(val)}`}>
+                    {scorePercent(val)}
+                  </span>
+                </div>
+                <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.round((val ?? 0) * 100)}%` }}
+                    transition={{ duration: 0.5, delay: index * 0.06, ease: [0.4, 0, 0.2, 1] }}
+                    className="h-1 rounded-full bg-indigo-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Feedback row — rate match quality (for ML training) */}
+          <div className="flex items-center gap-2 mb-3 pt-2 border-t border-gray-100">
+            <span className="text-xs text-gray-400">Rate this match:</span>
+            <motion.button
+              type="button"
+              aria-label="Good match"
+              onClick={() => handleFeedback("thumbs_up")}
+              disabled={!!feedbackLoading}
+              whileTap={{ scale: 1.15 }}
+              className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                feedback === "thumbs_up"
+                  ? "text-green-600 bg-green-50"
+                  : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+              }`}
+            >
+              <ThumbsUp
+                className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_up" ? "animate-pulse" : ""}`}
+              />
+            </motion.button>
+            <motion.button
+              type="button"
+              aria-label="Poor match"
+              onClick={() => handleFeedback("thumbs_down")}
+              disabled={!!feedbackLoading}
+              whileTap={{ scale: 1.15 }}
+              className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                feedback === "thumbs_down"
+                  ? "text-red-500 bg-red-50"
+                  : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+              }`}
+            >
+              <ThumbsDown
+                className={`h-3.5 w-3.5 ${feedbackLoading === "thumbs_down" ? "animate-pulse" : ""}`}
+              />
+            </motion.button>
+          </div>
+
+          {/* Badges */}
+          <div className="flex flex-wrap gap-1.5">
+            <Badge variant="default">{job.sourceBoard}</Badge>
+            {job.atsType && job.atsType !== "unknown" && (
+              <Badge variant="brand">
+                <Zap className="h-3 w-3" />
+                {job.atsType}
+              </Badge>
+            )}
+            {job.isRemote && <Badge variant="success">Remote</Badge>}
+            {job.isScam && <Badge variant="danger">Potential Scam</Badge>}
+          </div>
+        </CardContent>
+
+        <CardFooter className="gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            className="flex-1"
+            onClick={handleApprove}
+            loading={loading === "approve"}
+            disabled={!!loading}
+          >
+            <motion.span whileTap={{ scale: 1.15 }} className="inline-flex items-center gap-1.5">
+              <ThumbsUp className="h-3.5 w-3.5" />
+              Apply
+            </motion.span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={handleReject}
+            loading={loading === "reject"}
+            disabled={!!loading}
+          >
+            <motion.span whileTap={{ scale: 1.15 }} className="inline-flex items-center gap-1.5">
+              <ThumbsDown className="h-3.5 w-3.5" />
+              Skip
+            </motion.span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+          >
+            <a href={job.url} target="_blank" rel="noopener noreferrer">
+              View
+            </a>
+          </Button>
+        </CardFooter>
+      </Card>
+    </motion.div>
   );
 }

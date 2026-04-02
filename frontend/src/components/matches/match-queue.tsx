@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Inbox, CheckSquare, Square, ThumbsUp, ThumbsDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -8,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { MatchCard } from "./match-card";
 import { listMatches, bulkUpdateMatches, type MatchStatusUpdateResponse } from "@/lib/api";
 import type { Match, MatchStatus } from "@/lib/types";
+import { staggerContainer, fadeSlideUp } from "@/lib/motion";
 
 const STATUS_TABS: { label: string; value: MatchStatus | "all" }[] = [
   { label: "Pending", value: "pending" },
@@ -99,7 +101,7 @@ export function MatchQueue() {
     }
   }
 
-  // Clear selection whenever the tab or page changes
+  // Clear selection whenever the tab changes
   useEffect(() => {
     setSelected(new Set());
   }, [status]);
@@ -154,18 +156,25 @@ export function MatchQueue() {
     <div className="space-y-4">
       {/* Primary toolbar: tabs + refresh */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        {/* Status tabs */}
+        {/* Status tabs with animated underline */}
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setStatus(tab.value)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 status === tab.value
                   ? "bg-white text-gray-900 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
+              {status === tab.value && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full"
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               {tab.label}
             </button>
           ))}
@@ -182,62 +191,80 @@ export function MatchQueue() {
         </Button>
       </div>
 
-      {/* Bulk action toolbar — only visible when matches are loaded */}
-      {!loading && matches.length > 0 && (
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Select All toggle */}
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+      {/* Bulk action toolbar — animated slide-down */}
+      <AnimatePresence>
+        {!loading && matches.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
           >
-            {allSelected ? (
-              <CheckSquare className="h-4 w-4 text-brand-500" />
-            ) : (
-              <Square className="h-4 w-4" />
-            )}
-            {allSelected ? "Deselect all" : "Select all"}
-          </button>
-
-          {/* Bulk actions — only shown when something is selected */}
-          {selectedCount > 0 && (
-            <>
-              <span className="text-sm text-gray-500">{selectedCount} selected</span>
-
-              <Button
-                variant="success"
-                size="sm"
-                onClick={handleBulkApprove}
-                loading={bulkLoading === "approve"}
-                disabled={!!bulkLoading}
-              >
-                <ThumbsUp className="h-3.5 w-3.5" />
-                Approve all
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBulkReject}
-                loading={bulkLoading === "reject"}
-                disabled={!!bulkLoading}
-              >
-                <ThumbsDown className="h-3.5 w-3.5" />
-                Skip all
-              </Button>
-
+            <div className="flex items-center gap-3 flex-wrap pb-1">
+              {/* Select All toggle */}
               <button
                 type="button"
-                onClick={handleClearSelection}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Clear selection"
+                onClick={handleSelectAll}
+                className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
-                <X className="h-4 w-4" />
+                {allSelected ? (
+                  <CheckSquare className="h-4 w-4 text-brand-500" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+                {allSelected ? "Deselect all" : "Select all"}
               </button>
-            </>
-          )}
-        </div>
-      )}
+
+              {/* Bulk actions — only shown when something is selected */}
+              <AnimatePresence>
+                {selectedCount > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex items-center gap-3"
+                  >
+                    <span className="text-sm text-gray-500">{selectedCount} selected</span>
+
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={handleBulkApprove}
+                      loading={bulkLoading === "approve"}
+                      disabled={!!bulkLoading}
+                    >
+                      <ThumbsUp className="h-3.5 w-3.5" />
+                      Approve all
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkReject}
+                      loading={bulkLoading === "reject"}
+                      disabled={!!bulkLoading}
+                    >
+                      <ThumbsDown className="h-3.5 w-3.5" />
+                      Skip all
+                    </Button>
+
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      aria-label="Clear selection"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Error state */}
       {error && (
@@ -253,7 +280,12 @@ export function MatchQueue() {
         </div>
       ) : matches.length === 0 ? (
         /* Empty state */
-        <div className="flex flex-col items-center justify-center py-20 text-center">
+        <motion.div
+          variants={fadeSlideUp}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-col items-center justify-center py-20 text-center"
+        >
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <Inbox className="h-8 w-8 text-gray-400" />
           </div>
@@ -265,21 +297,28 @@ export function MatchQueue() {
               ? "New job matches will appear here as our discovery engine finds them."
               : `No matches with status "${status}" yet.`}
           </p>
-        </div>
+        </motion.div>
       ) : (
         <>
-          {/* Match grid */}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {matches.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                onUpdate={handleUpdate}
-                selected={selected.has(match.id)}
-                onToggleSelect={handleToggleSelect}
-              />
-            ))}
-          </div>
+          {/* Match grid with stagger container */}
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            <AnimatePresence mode="popLayout">
+              {matches.map((match) => (
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  onUpdate={handleUpdate}
+                  selected={selected.has(match.id)}
+                  onToggleSelect={handleToggleSelect}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
 
           {/* Load more */}
           {hasMore && (

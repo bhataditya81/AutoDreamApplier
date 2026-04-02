@@ -1,4 +1,7 @@
+'use client';
+
 import * as React from "react";
+import { motion, type HTMLMotionProps } from "framer-motion";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
@@ -35,13 +38,30 @@ const badgeVariants = cva(
   }
 );
 
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badgeVariants> {}
+// Use only safe motion props (no conflicting HTML event props like onDrag)
+type BadgeMotionProps = Pick<
+  HTMLMotionProps<'span'>,
+  'style' | 'className' | 'id' | 'aria-label' | 'aria-hidden' | 'role' | 'tabIndex' | 'onClick'
+>;
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+export interface BadgeProps extends BadgeMotionProps, VariantProps<typeof badgeVariants> {
+  children?: React.ReactNode;
+}
+
+function Badge({ className, variant, children, ...props }: BadgeProps) {
   return (
-    <span className={cn(badgeVariants({ variant }), className)} {...props} />
+    <motion.span
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    >
+      {variant === 'applying' && (
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 mr-1.5 animate-pulse" />
+      )}
+      {children}
+    </motion.span>
   );
 }
 
