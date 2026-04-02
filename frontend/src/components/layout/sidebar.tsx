@@ -93,7 +93,7 @@ export function Sidebar() {
                 {label}
               </span>
               {href === '/dashboard/matches' && autoApplyOn && (
-                <div className="relative ml-auto flex items-center justify-center w-2 h-2">
+                <div data-testid="auto-apply-badge" className="relative ml-auto flex items-center justify-center w-2 h-2">
                   <span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" />
                   <span className="relative inline-flex w-2 h-2 rounded-full bg-green-500" />
                 </div>

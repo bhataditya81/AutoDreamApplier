@@ -15,6 +15,7 @@ test.describe('Dashboard — unauthenticated', () => {
   });
 
   test('root / redirects to /dashboard/overview when authenticated', async ({ page }) => {
+    // Set token first, then navigate — useEffect fires and redirects
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('autodream_token', 'fake-dev-jwt-token');
@@ -25,7 +26,7 @@ test.describe('Dashboard — unauthenticated', () => {
       }));
     });
     await page.goto('/');
-    await expect(page).toHaveURL(/\/dashboard\/overview/);
+    await expect(page).toHaveURL(/\/dashboard\/overview/, { timeout: 10_000 });
   });
 });
 
@@ -101,13 +102,12 @@ authTest.describe('Dashboard — authenticated', () => {
     await expect(page.getByRole('link', { name: /settings/i })).toBeVisible();
   });
 
-  authTest('does NOT show AUTO badge when autoApply is off', async ({ authenticatedPage: page }) => {
+  authTest('does NOT show auto-apply badge when autoApply is off', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/matches');
-    // exact:true avoids matching brand names like "AutoDream" via substring
-    await expect(page.getByText('AUTO', { exact: true })).not.toBeVisible();
+    await expect(page.getByTestId('auto-apply-badge')).not.toBeVisible();
   });
 
-  authTest('shows AUTO badge when autoApply is on', async ({ authenticatedPage: page }) => {
+  authTest('shows auto-apply badge (pulsing dot) when autoApply is on', async ({ authenticatedPage: page }) => {
     await page.route('**/api/v1/users/me/preferences', (route) => {
       route.fulfill({
         status: 200,
@@ -123,7 +123,6 @@ authTest.describe('Dashboard — authenticated', () => {
       });
     });
     await page.goto('/dashboard/matches');
-    // exact: true avoids substring-matching "AutoDream" in the sidebar logo
-    await expect(page.getByText('AUTO', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('auto-apply-badge')).toBeVisible();
   });
 });

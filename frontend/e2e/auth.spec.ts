@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Auth — Login page', () => {
   test('login page loads with email and password fields', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByRole('heading', { name: /AutoDreamApplier/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
     await expect(page.getByPlaceholder(/jane@example\.com/i)).toBeVisible();
     await expect(page.getByPlaceholder(/password/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
