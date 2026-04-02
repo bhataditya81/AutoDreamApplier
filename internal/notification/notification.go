@@ -157,6 +157,38 @@ func (c *Client) SendWeeklyDigest(ctx context.Context, toEmail string, data Week
 	return c.send(ctx, toEmail, subject, tmplWeeklyDigest, data)
 }
 
+// SendContactNotification forwards a contact form submission to the configured
+// from-email address so the team receives an alert. Nil-safe — no-ops in dev.
+func (c *Client) SendContactNotification(ctx context.Context, name, fromEmail, subject, message string) error {
+	if c == nil {
+		return nil
+	}
+	if subject == "" {
+		subject = "New contact form submission"
+	}
+	body := fmt.Sprintf(
+		"<p><b>From:</b> %s &lt;%s&gt;</p><p><b>Subject:</b> %s</p><p>%s</p>",
+		name, fromEmail, subject, message,
+	)
+	input := &sesv2.SendEmailInput{
+		FromEmailAddress: aws.String(c.fromEmail),
+		Destination: &types.Destination{
+			ToAddresses: []string{c.fromEmail}, // reply to ourselves
+		},
+		ReplyToAddresses: []string{fromEmail},
+		Content: &types.EmailContent{
+			Simple: &types.Message{
+				Subject: &types.Content{Data: aws.String("[AutoDreamApplier Contact] " + subject), Charset: aws.String("UTF-8")},
+				Body: &types.Body{
+					Html: &types.Content{Data: aws.String(body), Charset: aws.String("UTF-8")},
+				},
+			},
+		},
+	}
+	_, err := c.ses.SendEmail(ctx, input)
+	return err
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 func (c *Client) send(ctx context.Context, toEmail, subject string, tmpl *template.Template, data any) error {

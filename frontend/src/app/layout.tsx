@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { LazyMotion, domAnimation } from "framer-motion";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,9 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body className={`${inter.variable} font-sans antialiased`}>
-        <LazyMotion features={domAnimation} strict>
-          {children}
-        </LazyMotion>
+        {children}
       </body>
     </html>
   );

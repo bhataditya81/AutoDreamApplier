@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"os"
 	"os/signal"
 	"syscall"
@@ -156,6 +158,38 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		})
+
+		// Public contact form — no auth required.
+		r.Post("/contact", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Name    string `json:"name"`
+				Email   string `json:"email"`
+				Subject string `json:"subject"`
+				Message string `json:"message"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				response.Error(w, http.StatusBadRequest, "INVALID_BODY", "invalid request body")
+				return
+			}
+			body.Name = strings.TrimSpace(body.Name)
+			body.Email = strings.TrimSpace(body.Email)
+			body.Message = strings.TrimSpace(body.Message)
+			if body.Email == "" || body.Message == "" {
+				response.Error(w, http.StatusBadRequest, "MISSING_FIELDS", "email and message are required")
+				return
+			}
+			// Persist the message.
+			if err := userRepo.SaveContactMessage(r.Context(), body.Name, body.Email, body.Subject, body.Message); err != nil {
+				log.Error().Err(err).Msg("failed to save contact message")
+				response.Error(w, http.StatusInternalServerError, "DB_ERROR", "failed to save message")
+				return
+			}
+			// Forward via SES when configured — nil-safe, no-ops in dev.
+			if notifClient != nil {
+				_ = notifClient.SendContactNotification(r.Context(), body.Name, body.Email, body.Subject, body.Message)
+			}
 			response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 

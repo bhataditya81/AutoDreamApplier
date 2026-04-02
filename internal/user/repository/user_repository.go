@@ -567,6 +567,19 @@ func (r *UserRepository) ListAutoApplyUsers(ctx context.Context) ([]*models.User
 	return users, rows.Err()
 }
 
+// SaveContactMessage persists a contact form submission.
+func (r *UserRepository) SaveContactMessage(ctx context.Context, name, email, subject, message string) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO contact_messages (name, email, subject, message, created_at)
+		 VALUES ($1, $2, $3, $4, NOW())`,
+		name, email, subject, message,
+	)
+	if err != nil {
+		return fmt.Errorf("SaveContactMessage: %w", err)
+	}
+	return nil
+}
+
 func joinStrings(strs []string, sep string) string {
 	result := ""
 	for i, s := range strs {
