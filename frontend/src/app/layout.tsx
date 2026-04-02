@@ -9,7 +9,8 @@ export const metadata: Metadata = {
   description:
     "Cloud-native job application automation. Apply to hundreds of jobs while you sleep.",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/logo.png",
+    apple: "/logo.png",
   },
 };
 

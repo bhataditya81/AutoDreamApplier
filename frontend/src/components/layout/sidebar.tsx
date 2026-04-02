@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -8,7 +9,6 @@ import {
   Layers,
   FileText,
   Settings,
-  Zap,
   LogOut,
   BarChart2,
   LineChart,
@@ -39,13 +39,15 @@ export function Sidebar() {
   return (
     <aside className="flex flex-col w-60 min-h-screen border-r border-border bg-white shrink-0">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 h-16 border-b border-border shrink-0">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
-          <Zap className="h-4 w-4 text-white" />
-        </div>
-        <span className="font-semibold text-gray-900 text-sm tracking-tight">
-          AutoDream
-        </span>
+      <div className="flex items-center px-5 h-16 border-b border-border shrink-0">
+        <Image
+          src="/logo.png"
+          alt="AutoDreamApplier"
+          width={160}
+          height={36}
+          className="object-contain object-left"
+          priority
+        />
       </div>
 
       {/* Navigation */}
