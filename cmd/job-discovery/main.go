@@ -47,7 +47,7 @@ func main() {
 	// Initialize Redis
 	rdb, err := pkgredis.NewClient(context.Background(), cfg.Redis, log)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to Redis")
+		log.Fatal().Err(err).Msg("Failed to connect to Redis") //nolint:gocritic
 	}
 	defer rdb.Close()
 

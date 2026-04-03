@@ -178,7 +178,7 @@ func TestEnrichATSType_GreenhouseURL(t *testing.T) {
 	// Simulate Greenhouse redirect target.
 	greenhouseSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Greenhouse Apply Page"))
+		_, _ = w.Write([]byte("Greenhouse Apply Page"))
 	}))
 	defer greenhouseSrv.Close()
 
@@ -212,7 +212,7 @@ func TestEnrichATSType_LeverURL(t *testing.T) {
 	// Simulate Lever redirect target.
 	leverSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Lever Apply Page"))
+		_, _ = w.Write([]byte("Lever Apply Page"))
 	}))
 	defer leverSrv.Close()
 
@@ -245,7 +245,7 @@ func TestEnrichATSType_UnknownURL(t *testing.T) {
 	// Server that always returns 200 without redirecting.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Unknown Apply Page"))
+		_, _ = w.Write([]byte("Unknown Apply Page"))
 	}))
 	defer srv.Close()
 
@@ -333,7 +333,7 @@ func TestIndeedScraper_ScrapePage_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(indeedJobHTML))
+		_, _ = w.Write([]byte(indeedJobHTML))
 	}))
 	defer srv.Close()
 

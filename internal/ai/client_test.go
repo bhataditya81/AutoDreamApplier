@@ -30,7 +30,7 @@ func TestClient_TailorResume_HappyPath(t *testing.T) {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.ResumeTailorResponse{
+		_ = json.NewEncoder(w).Encode(ai.ResumeTailorResponse{
 			TailoredText:  "tailored resume text",
 			ChangesMade:   []string{"added keyword Go"},
 			KeywordsAdded: []string{"Go"},
@@ -80,7 +80,7 @@ func TestClient_GenerateCoverLetter_HappyPath(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.CoverLetterResponse{
+		_ = json.NewEncoder(w).Encode(ai.CoverLetterResponse{
 			CoverLetter: "Dear Hiring Manager, ...",
 			WordCount:   50,
 		})
@@ -108,7 +108,7 @@ func TestClient_GenerateCoverLetter_HappyPath(t *testing.T) {
 func TestClient_GenerateCoverLetter_Server500(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "service unavailable"}`))
+		_, _ = w.Write([]byte(`{"error": "service unavailable"}`))
 	}))
 	defer srv.Close()
 
@@ -129,7 +129,7 @@ func TestClient_AnswerFormQuestion_HappyPath(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.FormQAResponse{
+		_ = json.NewEncoder(w).Encode(ai.FormQAResponse{
 			Answer:     "5 years",
 			Confidence: 0.95,
 		})
@@ -211,7 +211,7 @@ func TestClient_TailorResume_InvalidJSONResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("this is not json {{{"))
+		_, _ = w.Write([]byte("this is not json {{{"))
 	}))
 	defer srv.Close()
 

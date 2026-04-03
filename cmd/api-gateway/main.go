@@ -65,7 +65,7 @@ func main() {
 	// Initialize PostgreSQL
 	dbPool, err := database.NewPostgresPool(ctx, cfg.DB, log)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to connect to PostgreSQL")
+		log.Fatal().Err(err).Msg("failed to connect to PostgreSQL") //nolint:gocritic
 	}
 	defer database.Close(dbPool)
 

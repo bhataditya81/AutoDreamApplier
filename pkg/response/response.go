@@ -28,64 +28,49 @@ type Meta struct {
 	TotalPages int   `json:"total_pages,omitempty"`
 }
 
+func encode(w http.ResponseWriter, v interface{}) {
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 // JSON writes a JSON response with the given status code.
 func JSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
-	resp := APIResponse{
+	encode(w, APIResponse{
 		Success: statusCode >= 200 && statusCode < 300,
 		Data:    data,
-	}
-
-	json.NewEncoder(w).Encode(resp)
+	})
 }
 
 // JSONWithMeta writes a JSON response with pagination metadata.
 func JSONWithMeta(w http.ResponseWriter, statusCode int, data interface{}, meta *Meta) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
-	resp := APIResponse{
+	encode(w, APIResponse{
 		Success: true,
 		Data:    data,
 		Meta:    meta,
-	}
-
-	json.NewEncoder(w).Encode(resp)
+	})
 }
 
 // Error writes an error JSON response.
 func Error(w http.ResponseWriter, statusCode int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
-	resp := APIResponse{
+	encode(w, APIResponse{
 		Success: false,
-		Error: &APIError{
-			Code:    code,
-			Message: message,
-		},
-	}
-
-	json.NewEncoder(w).Encode(resp)
+		Error:   &APIError{Code: code, Message: message},
+	})
 }
 
 // ErrorWithDetails writes an error JSON response with additional details.
 func ErrorWithDetails(w http.ResponseWriter, statusCode int, code, message, details string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
-	resp := APIResponse{
+	encode(w, APIResponse{
 		Success: false,
-		Error: &APIError{
-			Code:    code,
-			Message: message,
-			Details: details,
-		},
-	}
-
-	json.NewEncoder(w).Encode(resp)
+		Error:   &APIError{Code: code, Message: message, Details: details},
+	})
 }
 
 // Common error helpers

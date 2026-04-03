@@ -44,7 +44,7 @@ func buildJWKSServer(t *testing.T) (*httptest.Server, string, *rsa.PrivateKey) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"keys": []map[string]interface{}{
 				{"kid": kid, "kty": "RSA", "use": "sig", "n": nB64, "e": eB64},
 			},
@@ -201,7 +201,7 @@ func TestValidateToken_RS256_InvalidTokenUse(t *testing.T) {
 // TestRefreshKeys_InvalidJSON_ReturnsError verifies malformed JWKS response is handled.
 func TestRefreshKeys_InvalidJSON_ReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json {{{"))
+		_, _ = w.Write([]byte("not json {{{"))
 	}))
 	defer srv.Close()
 

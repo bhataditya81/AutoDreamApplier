@@ -426,7 +426,7 @@ func TestGlassdoorScraper_ScrapePage_ParsesJobsFromLegacyFixture(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fixture))
+		_, _ = w.Write([]byte(fixture))
 	}))
 	defer srv.Close()
 
@@ -445,7 +445,7 @@ func TestGlassdoorScraper_ScrapePage_ParsesJobsFromNextDataFixture(t *testing.T)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fixture))
+		_, _ = w.Write([]byte(fixture))
 	}))
 	defer srv.Close()
 

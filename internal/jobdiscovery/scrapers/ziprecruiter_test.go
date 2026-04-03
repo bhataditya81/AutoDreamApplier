@@ -432,7 +432,7 @@ func TestZipRecruiterScraper_ScrapePage_ParsesJobs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fixture))
+		_, _ = w.Write([]byte(fixture))
 	}))
 	defer srv.Close()
 
@@ -536,7 +536,7 @@ func TestZipRecruiterScraper_EnrichATSType_FollowsRedirect(t *testing.T) {
 	// Final ATS destination (not ziprecruiter.com domain).
 	atsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("apply page"))
+		_, _ = w.Write([]byte("apply page"))
 	}))
 	defer atsSrv.Close()
 
@@ -581,7 +581,7 @@ func TestZipRecruiterScraper_EnrichATSType_NoRedirect(t *testing.T) {
 	// Server that responds 200 without redirecting.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("job page"))
+		_, _ = w.Write([]byte("job page"))
 	}))
 	defer srv.Close()
 

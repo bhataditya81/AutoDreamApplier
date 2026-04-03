@@ -26,7 +26,7 @@ func buildDOCX(text string) []byte {
 		`</w:document>`
 
 	f, _ := zw.Create("word/document.xml")
-	f.Write([]byte(xml))
+	_, _ = f.Write([]byte(xml))
 	zw.Close()
 	return buf.Bytes()
 }
@@ -36,8 +36,7 @@ func buildDOCXWithParagraphs(paragraphs []string) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 
-	var xmlParts []string
-	xmlParts = make([]string, 0, len(paragraphs))
+	xmlParts := make([]string, 0, len(paragraphs))
 	for _, p := range paragraphs {
 		xmlParts = append(xmlParts, `<w:p><w:r><w:t>`+p+`</w:t></w:r></w:p>`)
 	}
@@ -50,7 +49,7 @@ func buildDOCXWithParagraphs(paragraphs []string) []byte {
 		`</w:document>`
 
 	f, _ := zw.Create("word/document.xml")
-	f.Write([]byte(xml))
+	_, _ = f.Write([]byte(xml))
 	zw.Close()
 	return buf.Bytes()
 }
@@ -134,7 +133,7 @@ func TestParseText_DOCX_MissingDocumentXML(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	f, _ := zw.Create("word/styles.xml") // no document.xml
-	f.Write([]byte("<styles/>"))
+	_, _ = f.Write([]byte("<styles/>"))
 	zw.Close()
 
 	_, err := resume.ParseText(buf.Bytes(), ".docx")
@@ -156,7 +155,7 @@ func TestParseText_DOCX_TabAndBreak(t *testing.T) {
 		`</w:document>`
 
 	f, _ := zw.Create("word/document.xml")
-	f.Write([]byte(xml))
+	_, _ = f.Write([]byte(xml))
 	zw.Close()
 
 	text, err := resume.ParseText(buf.Bytes(), ".docx")

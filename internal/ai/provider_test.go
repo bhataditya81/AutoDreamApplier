@@ -158,21 +158,6 @@ func TestNewProvider_Unknown_ReturnsError(t *testing.T) {
 // ─── AnthropicProvider.complete via mock HTTP ─────────────────────────────────
 // We test TailorResume/GenerateCoverLetter/AnswerFormQuestion because they call complete().
 
-// newAnthropicProviderWithURL uses reflection-free approach: we need to override
-// the httpClient's transport. Since the field is private, we test by constructing
-// a provider that calls a mock server.
-// The provider hardcodes the URL to https://api.anthropic.com — we can't redirect
-// it without changing the code. Instead, we test the constructor and the parsing
-// logic by providing a fake response via a roundtripper.
-
-type mockRoundTripper struct {
-	fn func(req *http.Request) (*http.Response, error)
-}
-
-func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	return m.fn(req)
-}
-
 // We can't inject httpClient into AnthropicProvider/OpenAIProvider/GeminiProvider
 // because those fields are private. The providers call real URLs with the private
 // httpClient. We therefore test the constructors and the error paths that don't
@@ -226,7 +211,7 @@ func TestGeminiProvider_ImplementsProvider(t *testing.T) {
 func TestProvider_PythonClient_TailorResume(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.ResumeTailorResponse{
+		_ = json.NewEncoder(w).Encode(ai.ResumeTailorResponse{
 			TailoredText:  "tailored",
 			ChangesMade:   []string{"keyword injection"},
 			KeywordsAdded: []string{"Python", "Go"},
@@ -249,7 +234,7 @@ func TestProvider_PythonClient_TailorResume(t *testing.T) {
 func TestProvider_PythonClient_GenerateCoverLetter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.CoverLetterResponse{
+		_ = json.NewEncoder(w).Encode(ai.CoverLetterResponse{
 			CoverLetter: "Dear Hiring Manager",
 			WordCount:   3,
 		})
@@ -271,7 +256,7 @@ func TestProvider_PythonClient_GenerateCoverLetter(t *testing.T) {
 func TestProvider_PythonClient_AnswerFormQuestion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ai.FormQAResponse{
+		_ = json.NewEncoder(w).Encode(ai.FormQAResponse{
 			Answer:     "Yes, I have 5 years of experience",
 			Confidence: 0.9,
 		})

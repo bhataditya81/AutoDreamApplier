@@ -41,10 +41,10 @@ func cleanupJob(t *testing.T, extID string, source models.JobSource) {
 	t.Helper()
 	pool := testhelper.NewTestPool(t)
 	t.Cleanup(func() {
-		pool.Exec(context.Background(),
+		_, _ = pool.Exec(context.Background(),
 			`DELETE FROM jobs WHERE external_id = $1 AND source_board = $2`,
 			extID, string(source),
-		) //nolint:errcheck
+		)
 	})
 }
 

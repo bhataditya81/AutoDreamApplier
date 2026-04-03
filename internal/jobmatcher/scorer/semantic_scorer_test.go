@@ -17,7 +17,7 @@ func makeEmbServer(t *testing.T, vec []float32) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"embedding":  vec,
 			"dimensions": len(vec),
 		})
@@ -161,7 +161,7 @@ func TestSemanticScorer_ScoreClamped(t *testing.T) {
 		}
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+		_ = json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
 			"embedding":  v,
 			"dimensions": len(v),
 		})

@@ -303,7 +303,7 @@ func TestValidateToken_RS256_BadJWKS_ReturnsError(t *testing.T) {
 	// Serve a JWKS with mangled base64 so key parsing fails gracefully.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"keys": []map[string]interface{}{
 				{"kid": "key1", "n": "!!!invalid_base64!!!", "e": "AQAB"},
 			},

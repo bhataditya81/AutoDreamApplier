@@ -56,7 +56,7 @@ func setGeminiClient(p *GeminiProvider, c *http.Client) {
 func TestAnthropicProvider_complete_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []struct {
 				Text string `json:"text"`
 			}{{Text: "tailored resume content here"}},
@@ -84,7 +84,7 @@ func TestAnthropicProvider_complete_HappyPath(t *testing.T) {
 func TestAnthropicProvider_complete_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Error: &struct {
 				Message string `json:"message"`
 			}{Message: "invalid API key"},
@@ -125,7 +125,7 @@ func TestAnthropicProvider_complete_HTTPError(t *testing.T) {
 func TestAnthropicProvider_complete_EmptyContent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{Content: nil})
+		_ = json.NewEncoder(w).Encode(anthropicResponse{Content: nil})
 	}))
 	defer srv.Close()
 
@@ -144,7 +144,7 @@ func TestAnthropicProvider_complete_EmptyContent(t *testing.T) {
 func TestAnthropicProvider_GenerateCoverLetter_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []struct {
 				Text string `json:"text"`
 			}{{Text: "Dear Hiring Manager, I am excited..."}},
@@ -176,7 +176,7 @@ func TestAnthropicProvider_GenerateCoverLetter_HappyPath(t *testing.T) {
 func TestAnthropicProvider_AnswerFormQuestion_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []struct {
 				Text string `json:"text"`
 			}{{Text: "5 years of Go experience"}},
@@ -207,7 +207,7 @@ func TestAnthropicProvider_AnswerFormQuestion_HappyPath(t *testing.T) {
 func TestOpenAIProvider_complete_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openAIResponse{
+		_ = json.NewEncoder(w).Encode(openAIResponse{
 			Choices: []struct {
 				Message struct {
 					Content string `json:"content"`
@@ -239,7 +239,7 @@ func TestOpenAIProvider_complete_HappyPath(t *testing.T) {
 func TestOpenAIProvider_complete_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openAIResponse{
+		_ = json.NewEncoder(w).Encode(openAIResponse{
 			Error: &struct {
 				Message string `json:"message"`
 			}{Message: "invalid API key"},
@@ -262,7 +262,7 @@ func TestOpenAIProvider_complete_APIError(t *testing.T) {
 func TestOpenAIProvider_complete_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":{"message":"unauthorized"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"unauthorized"}}`))
 	}))
 	defer srv.Close()
 
@@ -281,7 +281,7 @@ func TestOpenAIProvider_complete_HTTPError(t *testing.T) {
 func TestOpenAIProvider_complete_EmptyChoices(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openAIResponse{Choices: nil})
+		_ = json.NewEncoder(w).Encode(openAIResponse{Choices: nil})
 	}))
 	defer srv.Close()
 
@@ -300,7 +300,7 @@ func TestOpenAIProvider_complete_EmptyChoices(t *testing.T) {
 func TestOpenAIProvider_GenerateCoverLetter_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openAIResponse{
+		_ = json.NewEncoder(w).Encode(openAIResponse{
 			Choices: []struct {
 				Message struct {
 					Content string `json:"content"`
@@ -329,7 +329,7 @@ func TestOpenAIProvider_GenerateCoverLetter_HappyPath(t *testing.T) {
 func TestOpenAIProvider_AnswerFormQuestion_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openAIResponse{
+		_ = json.NewEncoder(w).Encode(openAIResponse{
 			Choices: []struct {
 				Message struct {
 					Content string `json:"content"`
@@ -360,7 +360,7 @@ func TestOpenAIProvider_AnswerFormQuestion_HappyPath(t *testing.T) {
 func TestGeminiProvider_complete_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(geminiResponse{
+		_ = json.NewEncoder(w).Encode(geminiResponse{
 			Candidates: []struct {
 				Content struct {
 					Parts []struct {
@@ -398,7 +398,7 @@ func TestGeminiProvider_complete_HappyPath(t *testing.T) {
 func TestGeminiProvider_complete_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(geminiResponse{
+		_ = json.NewEncoder(w).Encode(geminiResponse{
 			Error: &struct {
 				Message string `json:"message"`
 			}{Message: "API key invalid"},
@@ -421,7 +421,7 @@ func TestGeminiProvider_complete_APIError(t *testing.T) {
 func TestGeminiProvider_complete_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":{"message":"forbidden"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"forbidden"}}`))
 	}))
 	defer srv.Close()
 
@@ -440,7 +440,7 @@ func TestGeminiProvider_complete_HTTPError(t *testing.T) {
 func TestGeminiProvider_complete_EmptyCandidates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(geminiResponse{Candidates: nil})
+		_ = json.NewEncoder(w).Encode(geminiResponse{Candidates: nil})
 	}))
 	defer srv.Close()
 
@@ -459,7 +459,7 @@ func TestGeminiProvider_complete_EmptyCandidates(t *testing.T) {
 func TestGeminiProvider_GenerateCoverLetter_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(geminiResponse{
+		_ = json.NewEncoder(w).Encode(geminiResponse{
 			Candidates: []struct {
 				Content struct {
 					Parts []struct {
@@ -596,7 +596,7 @@ func TestGeminiProvider_AnswerFormQuestion_Error(t *testing.T) {
 func TestGeminiProvider_AnswerFormQuestion_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(geminiResponse{
+		_ = json.NewEncoder(w).Encode(geminiResponse{
 			Candidates: []struct {
 				Content struct {
 					Parts []struct {

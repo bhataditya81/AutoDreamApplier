@@ -13,7 +13,7 @@ func TestEnrichATSType(t *testing.T) {
 	// 1. Target ATS server (e.g. Lever)
 	atsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Lever Apply Page"))
+		_, _ = w.Write([]byte("Lever Apply Page"))
 	}))
 	defer atsServer.Close()
 
@@ -32,7 +32,7 @@ func TestEnrichATSType(t *testing.T) {
 	// 4. Dead-end server (simulating no redirect, just standard indeed.com job)
 	deadEndServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Standard Indeed Apply"))
+		_, _ = w.Write([]byte("Standard Indeed Apply"))
 	}))
 	defer deadEndServer.Close()
 

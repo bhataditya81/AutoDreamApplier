@@ -345,7 +345,7 @@ func (s *MatchingService) isExcluded(job *discmodels.Job, exclusions []string) b
 	if len(exclusions) == 0 {
 		return false
 	}
-	lower := func(ss string) string { return strings.ToLower(ss) }
+	lower := strings.ToLower
 	for _, excl := range exclusions {
 		ex := lower(excl)
 		if strings.Contains(lower(job.Company), ex) ||

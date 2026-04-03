@@ -18,7 +18,7 @@ func fakeEmbedServer(t *testing.T) *httptest.Server {
 		case "/api/v1/embeddings/text":
 			emb := make([]float32, 384)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"embedding":  emb,
 				"dimensions": 384,
 			})
@@ -26,13 +26,13 @@ func fakeEmbedServer(t *testing.T) *httptest.Server {
 			var req struct {
 				Texts []string `json:"texts"`
 			}
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			embs := make([][]float32, len(req.Texts))
 			for i := range embs {
 				embs[i] = make([]float32, 384)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"embeddings": embs,
 				"dimensions": 384,
 			})
