@@ -23,7 +23,7 @@ py:test:
   script:
     - |
       if [ -d "ai-service/tests" ]; then
-        pytest -q ai-service/tests
+        cd ai-service && pytest -q tests
       else
         echo "No ai-service/tests directory; skipping."
       fi

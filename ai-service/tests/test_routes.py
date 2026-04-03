@@ -1,4 +1,5 @@
-"""Unit tests for AI service routes using mocked Anthropic client."""
+"""Unit tests for AI service routes — patches app.services.llm.complete,
+the provider-agnostic entry point, so tests work regardless of AI_PROVIDER."""
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -14,7 +15,7 @@ def test_health():
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
-@patch("app.services.anthropic_client.complete", side_effect=mock_complete)
+@patch("app.services.llm.complete", side_effect=mock_complete)
 def test_tailor_resume(mock_ai):
     resp = client.post("/api/v1/resume/tailor", json={
         "resume_text": "Experienced engineer with Python and Go skills.",
@@ -28,7 +29,7 @@ def test_tailor_resume(mock_ai):
     assert "tailored_text" in data
     assert "changes_made" in data
 
-@patch("app.services.anthropic_client.complete", side_effect=mock_complete)
+@patch("app.services.llm.complete", side_effect=mock_complete)
 def test_cover_letter(mock_ai):
     resp = client.post("/api/v1/cover-letter/generate", json={
         "resume_text": "Experienced engineer.",
@@ -48,7 +49,7 @@ def test_form_qa_salary_question():
     assert resp.status_code == 200
     assert "salary" in resp.json()["answer"].lower() or "flexible" in resp.json()["answer"].lower()
 
-@patch("app.services.anthropic_client.complete", side_effect=mock_complete)
+@patch("app.services.llm.complete", side_effect=mock_complete)
 def test_form_qa_general(mock_ai):
     resp = client.post("/api/v1/form-qa/answer", json={
         "question": "Describe your experience with distributed systems.",

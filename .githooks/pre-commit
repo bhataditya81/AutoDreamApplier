@@ -111,8 +111,8 @@ if [ -n "$STAGED_PY" ]; then
 
   # py:test
   if [ -d "ai-service/tests" ]; then
-    if APP_ENV=test ANTHROPIC_API_KEY=test-key-placeholder \
-        python3 -m pytest -q ai-service/tests 2>&1; then
+    if (cd ai-service && APP_ENV=test ANTHROPIC_API_KEY=test-key-placeholder \
+        python3 -m pytest -q tests 2>&1); then
       ok "py:test"
     else
       fail "py:test — fix failing Python tests above"
