@@ -83,7 +83,7 @@ func (c *Client) EmergencyStop(ctx context.Context, userID string) error {
 // Health checks the browser pool liveness endpoint.
 func (c *Client) Health(ctx context.Context) error {
 	url := c.base + "/health"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("build health request: %w", err)
 	}

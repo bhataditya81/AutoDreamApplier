@@ -37,6 +37,7 @@ func buildDOCXWithParagraphs(paragraphs []string) []byte {
 	zw := zip.NewWriter(&buf)
 
 	var xmlParts []string
+	xmlParts = make([]string, 0, len(paragraphs))
 	for _, p := range paragraphs {
 		xmlParts = append(xmlParts, `<w:p><w:r><w:t>`+p+`</w:t></w:r></w:p>`)
 	}

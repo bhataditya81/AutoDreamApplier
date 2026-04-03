@@ -98,12 +98,9 @@ func main() {
 		if err := jobSvc.EmbedNewJobs(embedCtx, embClient); err != nil {
 			log.Warn().Err(err).Msg("initial EmbedNewJobs failed")
 		}
-		for {
-			select {
-			case <-ticker.C:
-				if err := jobSvc.EmbedNewJobs(embedCtx, embClient); err != nil {
-					log.Warn().Err(err).Msg("EmbedNewJobs failed")
-				}
+		for range ticker.C {
+			if err := jobSvc.EmbedNewJobs(embedCtx, embClient); err != nil {
+				log.Warn().Err(err).Msg("EmbedNewJobs failed")
 			}
 		}
 	}()

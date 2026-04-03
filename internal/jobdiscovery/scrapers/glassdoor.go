@@ -165,7 +165,7 @@ func (s *glassdoorScraper) buildSearchURL(query, location string, remote bool, p
 
 // scrapePage fetches one Glassdoor search results page and returns job listings.
 func (s *glassdoorScraper) scrapePage(ctx context.Context, pageURL string) ([]*models.ScrapedJob, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

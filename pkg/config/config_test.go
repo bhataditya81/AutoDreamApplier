@@ -254,7 +254,7 @@ func TestDBConfig_DSN_Format(t *testing.T) {
 	for _, s := range expectations {
 		found := false
 		for _, part := range []string{dsn} {
-			if len(part) > 0 {
+			if part != "" {
 				found = containsStr(dsn, s)
 			}
 		}
@@ -265,7 +265,7 @@ func TestDBConfig_DSN_Format(t *testing.T) {
 }
 
 func containsStr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+	return len(s) >= len(sub) && (s == sub || sub == "" ||
 		func() bool {
 			for i := 0; i <= len(s)-len(sub); i++ {
 				if s[i:i+len(sub)] == sub {

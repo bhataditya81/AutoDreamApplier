@@ -47,7 +47,7 @@ func (m *mockFollowUpRepo) GetApplicationsNeedingFollowUp(ctx context.Context, u
 	return m.followUps, m.followUpsErr
 }
 
-func (m *mockFollowUpRepo) DismissFollowUp(ctx context.Context, applicationID uuid.UUID, userID uuid.UUID) error {
+func (m *mockFollowUpRepo) DismissFollowUp(ctx context.Context, applicationID, userID uuid.UUID) error {
 	return m.dismissErr
 }
 

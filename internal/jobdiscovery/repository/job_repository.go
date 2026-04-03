@@ -82,7 +82,11 @@ func (r *JobRepository) BulkUpsert(ctx context.Context, jobs []*models.ScrapedJo
 	if err != nil {
 		return 0, 0, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx closed" {
+			r.log.Err(err).Msg("failed to rollback transaction")
+		}
+	}()
 
 	for _, job := range jobs {
 		var id uuid.UUID

@@ -161,7 +161,7 @@ func (s *linkedInScraper) buildSearchURL(query, location string, remote bool, st
 
 // scrapePage fetches one LinkedIn search results page and returns job listings.
 func (s *linkedInScraper) scrapePage(ctx context.Context, pageURL string) ([]*models.ScrapedJob, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

@@ -179,17 +179,17 @@ func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 	}
 
 	submitted := 0
-	for _, m := range matches {
+	for i := range matches {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		if err := s.submitMatch(ctx, m); err != nil {
+		if err := s.submitMatch(ctx, &matches[i]); err != nil {
 			log.Error().Err(err).
-				Str("match_id", m.ID.String()).
-				Str("job_id", m.JobID.String()).
+				Str("match_id", matches[i].ID.String()).
+				Str("job_id", matches[i].JobID.String()).
 				Msg("auto-apply submission failed")
 			continue
 		}
@@ -207,7 +207,7 @@ func (s *Scheduler) processUser(ctx context.Context, userID uuid.UUID) {
 
 // submitMatch calls svc.Submit and updates the match status to 'applied'
 // so the scheduler does not re-process it on the next tick.
-func (s *Scheduler) submitMatch(ctx context.Context, m matchmodels.Match) error {
+func (s *Scheduler) submitMatch(ctx context.Context, m *matchmodels.Match) error {
 	log := s.log.With().
 		Str("match_id", m.ID.String()).
 		Str("job_id", m.JobID.String()).
@@ -232,6 +232,8 @@ func (s *Scheduler) submitMatch(ctx context.Context, m matchmodels.Match) error 
 // isBusinessHours returns true when the current UTC time falls within
 // Mon–Fri using the default UTC business hours window.
 // Kept for backward compatibility; prefer isWithinApplyWindow for per-user checks.
+//
+//nolint:unused // kept for backward compatibility
 func isBusinessHours() bool {
 	return isWithinApplyWindow("UTC", defaultBusinessHourStart, defaultBusinessHourEnd)
 }

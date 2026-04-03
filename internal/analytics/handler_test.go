@@ -24,7 +24,7 @@ func newTestHandler() *Handler {
 
 func doGet(t *testing.T, h *Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodGet, path, nil)
+	r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 	w := httptest.NewRecorder()
 	h.Routes().ServeHTTP(w, r)
 	return w

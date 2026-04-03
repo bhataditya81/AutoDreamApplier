@@ -131,7 +131,7 @@ func (s *zipRecruiterScraper) buildSearchURL(query, location string, remote bool
 
 // scrapePage fetches one search results page and returns the job listings.
 func (s *zipRecruiterScraper) scrapePage(ctx context.Context, pageURL string) ([]*models.ScrapedJob, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -161,33 +161,33 @@ func (s *zipRecruiterScraper) scrapePage(ctx context.Context, pageURL string) ([
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	return s.parseHTML(string(body))
+	return s.parseHTML(ctx, string(body))
 }
 
 // parseHTML extracts job cards from the ZipRecruiter results HTML.
 // ZipRecruiter renders job cards as <article data-job-id="..."> elements.
-func (s *zipRecruiterScraper) parseHTML(htmlContent string) ([]*models.ScrapedJob, error) {
+func (s *zipRecruiterScraper) parseHTML(ctx context.Context, htmlContent string) ([]*models.ScrapedJob, error) {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
 	var jobs []*models.ScrapedJob
-	s.walkNode(doc, &jobs)
+	s.walkNode(ctx, doc, &jobs)
 	return jobs, nil
 }
 
 // walkNode recursively walks the HTML AST, collecting job cards.
-func (s *zipRecruiterScraper) walkNode(n *html.Node, jobs *[]*models.ScrapedJob) {
+func (s *zipRecruiterScraper) walkNode(ctx context.Context, n *html.Node, jobs *[]*models.ScrapedJob) {
 	if n.Type == html.ElementNode {
 		if s.isJobCard(n) {
-			if job := s.extractJobCard(n); job != nil {
+			if job := s.extractJobCard(ctx, n); job != nil {
 				*jobs = append(*jobs, job)
 			}
 		}
 	}
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		s.walkNode(child, jobs)
+		s.walkNode(ctx, child, jobs)
 	}
 }
 
@@ -211,7 +211,7 @@ func (s *zipRecruiterScraper) isJobCard(n *html.Node) bool {
 }
 
 // extractJobCard extracts a ScrapedJob from a job card node.
-func (s *zipRecruiterScraper) extractJobCard(n *html.Node) *models.ScrapedJob {
+func (s *zipRecruiterScraper) extractJobCard(ctx context.Context, n *html.Node) *models.ScrapedJob {
 	job := &models.ScrapedJob{
 		Source:         models.SourceZipRecruiter,
 		SalaryCurrency: "USD",
@@ -237,7 +237,7 @@ func (s *zipRecruiterScraper) extractJobCard(n *html.Node) *models.ScrapedJob {
 	}
 
 	// Try to resolve the true ATS URL by following the redirect
-	s.enrichATSType(job)
+	s.enrichATSType(ctx, job)
 
 	return job
 }
@@ -325,7 +325,7 @@ func (s *zipRecruiterScraper) extractApplyURL(n *html.Node, job *models.ScrapedJ
 
 // enrichATSType follows the ZipRecruiter apply link redirect to find the true ApplyURL
 // and infers the ATSType from it.
-func (s *zipRecruiterScraper) enrichATSType(job *models.ScrapedJob) {
+func (s *zipRecruiterScraper) enrichATSType(ctx context.Context, job *models.ScrapedJob) {
 	if job.ApplyURL == "" {
 		return
 	}
@@ -340,7 +340,7 @@ func (s *zipRecruiterScraper) enrichATSType(job *models.ScrapedJob) {
 		},
 	}
 
-	req, err := http.NewRequest(http.MethodGet, job.ApplyURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.ApplyURL, http.NoBody)
 	if err != nil {
 		return
 	}

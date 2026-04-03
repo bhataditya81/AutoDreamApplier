@@ -356,13 +356,13 @@ func (r *UserRepository) GetABResume(ctx context.Context, userID uuid.UUID) (*mo
 
 	// Weighted random selection
 	totalWeight := 0
-	for _, c := range candidates {
-		totalWeight += c.AbWeight
+	for i := range candidates {
+		totalWeight += candidates[i].AbWeight
 	}
 	pick := rand.Intn(totalWeight)
 	cumulative := 0
-	for i, c := range candidates {
-		cumulative += c.AbWeight
+	for i := range candidates {
+		cumulative += candidates[i].AbWeight
 		if pick < cumulative {
 			return &candidates[i], nil
 		}
@@ -407,7 +407,11 @@ func (r *UserRepository) SetPrimaryResume(ctx context.Context, userID, resumeID 
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx closed" {
+			r.log.Err(err).Msg("failed to rollback transaction")
+		}
+	}()
 
 	// Unset all
 	if _, err := tx.Exec(ctx,
@@ -432,24 +436,32 @@ func (r *UserRepository) GetStats(ctx context.Context, userID uuid.UUID) (*model
 	stats := &models.UserStats{}
 
 	// Total applications
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM applications WHERE user_id = $1`, userID,
-	).Scan(&stats.TotalApplications)
+	).Scan(&stats.TotalApplications); err != nil {
+		return nil, fmt.Errorf("getting total applications: %w", err)
+	}
 
 	// Applied today
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM applications WHERE user_id = $1 AND created_at >= CURRENT_DATE`, userID,
-	).Scan(&stats.AppliedToday)
+	).Scan(&stats.AppliedToday); err != nil {
+		return nil, fmt.Errorf("getting applications today: %w", err)
+	}
 
 	// Pending matches
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM matches WHERE user_id = $1 AND status = 'pending'`, userID,
-	).Scan(&stats.PendingMatches)
+	).Scan(&stats.PendingMatches); err != nil {
+		return nil, fmt.Errorf("getting pending matches: %w", err)
+	}
 
 	// Interviews
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM applications WHERE user_id = $1 AND outcome = 'interview'`, userID,
-	).Scan(&stats.InterviewsReceived)
+	).Scan(&stats.InterviewsReceived); err != nil {
+		return nil, fmt.Errorf("getting interviews received: %w", err)
+	}
 
 	return stats, nil
 }

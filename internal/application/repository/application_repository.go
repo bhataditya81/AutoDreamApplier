@@ -434,13 +434,13 @@ func (r *ApplicationRepository) GetABResume(ctx context.Context, userID uuid.UUI
 
 	// Weighted random selection
 	totalWeight := 0
-	for _, c := range candidates {
-		totalWeight += c.AbWeight
+	for i := range candidates {
+		totalWeight += candidates[i].AbWeight
 	}
 	pick := rand.Intn(totalWeight)
 	cumulative := 0
-	for i, c := range candidates {
-		cumulative += c.AbWeight
+	for i := range candidates {
+		cumulative += candidates[i].AbWeight
 		if pick < cumulative {
 			return &candidates[i], nil
 		}
@@ -673,7 +673,7 @@ func (r *ApplicationRepository) GetApplicationsNeedingFollowUp(
 // DismissFollowUp records a "follow_up_dismissed" event so the follow-up
 // doesn't recur for this application.
 // Implements the notification.FollowUpRepository interface.
-func (r *ApplicationRepository) DismissFollowUp(ctx context.Context, applicationID uuid.UUID, userID uuid.UUID) error {
+func (r *ApplicationRepository) DismissFollowUp(ctx context.Context, applicationID, userID uuid.UUID) error {
 	// Verify the application belongs to the user before recording.
 	var ownerID uuid.UUID
 	err := r.pool.QueryRow(ctx,

@@ -90,7 +90,7 @@ func (h *testHandler) GetBenchmark(w http.ResponseWriter, r *http.Request) {
 
 func doHandlerGet(t *testing.T, h *testHandler, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 	w := httptest.NewRecorder()
 	h.Routes().ServeHTTP(w, req)
 	return w

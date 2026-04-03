@@ -57,6 +57,8 @@ func main() {
 	// ── Database ──────────────────────────────────────────────────────────────
 	pool, err := database.NewPostgresPool(ctx, cfg.DB, log)
 	if err != nil {
+		cancel()
+		//nolint:gocritic // log.Fatal will exit, but cancel() is explicitly called
 		log.Fatal().Err(err).Msg("failed to connect to PostgreSQL")
 	}
 	defer database.Close(pool)

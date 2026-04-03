@@ -131,7 +131,7 @@ func (s *indeedScraper) buildSearchURL(query, location string, remote bool, star
 
 // scrapePage fetches one search results page and returns the job listings.
 func (s *indeedScraper) scrapePage(ctx context.Context, pageURL string) ([]*models.ScrapedJob, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -303,7 +303,7 @@ func (s *indeedScraper) enrichATSType(job *models.ScrapedJob) {
 		},
 	}
 
-	req, err := http.NewRequest(http.MethodGet, job.ApplyURL, nil)
+	req, err := http.NewRequest(http.MethodGet, job.ApplyURL, http.NoBody)
 	if err != nil {
 		return
 	}

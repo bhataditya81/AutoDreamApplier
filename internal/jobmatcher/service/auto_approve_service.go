@@ -55,10 +55,10 @@ func (s *AutoApproveService) ProcessPendingMatches(ctx context.Context, userID u
 		return err
 	}
 	approved := 0
-	for _, m := range matches {
-		if m.MatchScore >= threshold {
-			if err := s.matchRepo.UpdateMatchStatus(ctx, m.ID, "approved"); err != nil {
-				s.log.Warn().Err(err).Str("match_id", m.ID.String()).Msg("failed to auto-approve match")
+	for i := range matches {
+		if matches[i].MatchScore >= threshold {
+			if err := s.matchRepo.UpdateMatchStatus(ctx, matches[i].ID, "approved"); err != nil {
+				s.log.Warn().Err(err).Str("match_id", matches[i].ID.String()).Msg("failed to auto-approve match")
 				continue
 			}
 			approved++

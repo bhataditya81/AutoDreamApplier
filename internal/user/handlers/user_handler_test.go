@@ -192,7 +192,7 @@ func TestUserHandler_GetMe_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	router, _ := newHandlerRouter(t, "", "")
 
-	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/me", http.NoBody)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 

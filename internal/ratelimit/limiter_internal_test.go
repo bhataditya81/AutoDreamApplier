@@ -3,7 +3,6 @@
 package ratelimit
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -128,7 +127,7 @@ func TestKey_ExtractRoundTrip(t *testing.T) {
 }
 
 func containsSubstr(s, sub string) bool {
-	return len(s) >= len(sub) && fmt.Sprintf("%s", s) != "" &&
+	return len(s) >= len(sub) && s != "" &&
 		func() bool {
 			for i := 0; i <= len(s)-len(sub); i++ {
 				if s[i:i+len(sub)] == sub {

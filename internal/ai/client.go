@@ -105,7 +105,7 @@ func (c *Client) AnswerFormQuestion(ctx context.Context, req *FormQARequest) (*F
 
 // HealthCheck verifies the AI service is reachable.
 func (c *Client) HealthCheck(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create health request: %w", err)
 	}
@@ -123,7 +123,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 }
 
 // post makes a POST request to the AI service and decodes the response.
-func (c *Client) post(ctx context.Context, path string, body any, result any) error {
+func (c *Client) post(ctx context.Context, path string, body, result any) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)

@@ -166,7 +166,7 @@ func (ca *CognitoAuth) getPublicKey(ctx context.Context, kid string) (*rsa.Publi
 
 func (ca *CognitoAuth) refreshKeys(ctx context.Context) error {
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ca.jwksURL, nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ca.jwksURL, http.NoBody)
 
 	resp, err := client.Do(req)
 	if err != nil {

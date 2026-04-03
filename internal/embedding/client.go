@@ -41,31 +41,9 @@ type embedTextResponse struct {
 // EmbedText returns a 384-dim embedding for the given text.
 // Returns an error if the AI service is unreachable or returns a non-200 status.
 func (c *Client) EmbedText(ctx context.Context, text string) ([]float32, error) {
-	body, err := json.Marshal(embedTextRequest{Text: text})
-	if err != nil {
-		return nil, fmt.Errorf("marshal embed request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+"/api/v1/embeddings/text", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create embed request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("embedding request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedding service returned status %d", resp.StatusCode)
-	}
-
 	var result embedTextResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode embedding response: %w", err)
+	if err := c.post(ctx, "/api/v1/embeddings/text", embedTextRequest{Text: text}, &result); err != nil {
+		return nil, err
 	}
 	return result.Embedding, nil
 }
@@ -83,31 +61,39 @@ type embedBatchResponse struct {
 
 // EmbedBatch returns embeddings for up to 100 texts in a single request.
 func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	body, err := json.Marshal(embedBatchRequest{Texts: texts})
+	var result embedBatchResponse
+	if err := c.post(ctx, "/api/v1/embeddings/batch", embedBatchRequest{Texts: texts}, &result); err != nil {
+		return nil, err
+	}
+	return result.Embeddings, nil
+}
+
+// post is a helper that makes a POST request to the given path with the given request body,
+// and decodes the response JSON into the given result.
+func (c *Client) post(ctx context.Context, path string, body any, result any) error {
+	payload, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("marshal batch embed request: %w", err)
+		return fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+"/api/v1/embeddings/batch", bytes.NewReader(body))
+		c.baseURL+path, bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("create batch embed request: %w", err)
+		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("batch embedding request: %w", err)
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedding service returned status %d", resp.StatusCode)
+		return fmt.Errorf("embedding service returned status %d", resp.StatusCode)
 	}
 
-	var result embedBatchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode batch embedding response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf("decode response: %w", err)
 	}
-	return result.Embeddings, nil
-}
+	return nil

@@ -218,7 +218,7 @@ func (s *WebhookService) ValidateURL(ctx context.Context, url string) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("invalid webhook URL: %w", err)
 	}

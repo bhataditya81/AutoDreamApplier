@@ -444,9 +444,9 @@ func (h *UserHandler) UpdateResumeAB(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find and return the updated resume
-	for _, res := range resumes {
-		if res.ID == resumeID {
-			response.JSON(w, http.StatusOK, res)
+	for i := range resumes {
+		if resumes[i].ID == resumeID {
+			response.JSON(w, http.StatusOK, resumes[i])
 			return
 		}
 	}

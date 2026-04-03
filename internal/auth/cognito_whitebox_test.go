@@ -273,7 +273,7 @@ func TestPeekAlg_TooFewParts(t *testing.T) {
 
 // TestExtractBearerToken tests extractBearerToken directly.
 func TestExtractBearerToken_Valid(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.Header.Set("Authorization", "Bearer test-token-123")
 
 	token := extractBearerToken(req)
@@ -283,7 +283,7 @@ func TestExtractBearerToken_Valid(t *testing.T) {
 }
 
 func TestExtractBearerToken_MissingHeader(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	token := extractBearerToken(req)
 	if token != "" {
 		t.Errorf("expected empty string, got %q", token)
@@ -291,7 +291,7 @@ func TestExtractBearerToken_MissingHeader(t *testing.T) {
 }
 
 func TestExtractBearerToken_InvalidFormat(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 
 	token := extractBearerToken(req)
@@ -301,7 +301,7 @@ func TestExtractBearerToken_InvalidFormat(t *testing.T) {
 }
 
 func TestExtractBearerToken_BearerCaseInsensitive(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.Header.Set("Authorization", "BEARER my-token")
 
 	token := extractBearerToken(req)
@@ -345,7 +345,7 @@ func TestMiddleware_InvalidBearerFormat(t *testing.T) {
 	})
 
 	// Test with malformed Authorization header (no space)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.Header.Set("Authorization", "malformedtoken")
 	rr := httptest.NewRecorder()
 	mw(inner).ServeHTTP(rr, req)

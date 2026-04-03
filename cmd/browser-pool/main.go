@@ -104,7 +104,7 @@ func main() {
 	// TODO: Close all Playwright browser instances before server shutdown
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Server forced to shutdown")
+		log.Error().Err(err).Msg("Server forced to shutdown")
 	}
 
 	log.Info().Msg("Browser Pool Manager stopped")

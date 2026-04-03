@@ -96,7 +96,7 @@ func (s *MatchingService) RunForUser(ctx context.Context, userID uuid.UUID) (*Ru
 
 	// 4. Score each job and collect candidates
 	result := &RunResult{UserID: userID}
-	var candidates []repository.MatchInsert
+	candidates := make([]repository.MatchInsert, 0, len(jobs))
 
 	for _, job := range jobs {
 		// Skip already-matched
@@ -185,7 +185,7 @@ func (s *MatchingService) RunForAllActiveUsers(ctx context.Context) ([]*RunResul
 	}
 	s.log.Info().Int("users", len(userIDs)).Msg("running matching for all active users")
 
-	var results []*RunResult
+	results := make([]*RunResult, 0, len(userIDs))
 	for _, uid := range userIDs {
 		select {
 		case <-ctx.Done():
