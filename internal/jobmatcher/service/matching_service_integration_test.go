@@ -337,7 +337,7 @@ func TestMatchingService_ApproveAndRejectMatch(t *testing.T) {
 
 	// Seed a second job for reject test.
 	jobID2 := uuid.New()
-	discJobRepo := discrepo.NewJobRepository(pool)
+	discJobRepo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 	job2 := &discmodels.ScrapedJob{
 		ExternalID:  "rej-" + jobID2.String(),
 		Source:      discmodels.SourceIndeed,

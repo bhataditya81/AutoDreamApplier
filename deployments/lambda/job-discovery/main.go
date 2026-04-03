@@ -28,7 +28,7 @@ func handler(ctx context.Context, _ events.CloudWatchEvent) error {
 	}
 	defer pool.Close()
 
-	jobRepo := discrepo.NewJobRepository(pool)
+	jobRepo := discrepo.NewJobRepository(pool, log)
 
 	// Register the LinkedIn scraper only when a residential proxy URL is configured.
 	var extra []scrapers.Scraper

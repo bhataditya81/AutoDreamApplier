@@ -68,7 +68,7 @@ func makeScrapedJob(t *testing.T, externalID string, source discmodels.JobSource
 func TestJobRepository_Upsert_NewJob(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	job := makeScrapedJob(t, fmt.Sprintf("ext-upsert-%s", uuid.New()), discmodels.SourceIndeed)
 
@@ -91,7 +91,7 @@ func TestJobRepository_Upsert_NewJob(t *testing.T) {
 func TestJobRepository_Upsert_DuplicateIsUpsert(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	job := makeScrapedJob(t, fmt.Sprintf("ext-dupe-%s", uuid.New()), discmodels.SourceIndeed)
 
@@ -125,7 +125,7 @@ func TestJobRepository_Upsert_DuplicateIsUpsert(t *testing.T) {
 func TestJobRepository_BulkUpsert_MixedNewAndDupe(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	jobs := []*discmodels.ScrapedJob{
@@ -153,7 +153,7 @@ func TestJobRepository_BulkUpsert_MixedNewAndDupe(t *testing.T) {
 func TestJobRepository_GetActiveJobs(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	active := makeScrapedJob(t, "active-"+base, discmodels.SourceGlassdoor)
@@ -189,7 +189,7 @@ func TestJobRepository_GetActiveJobs(t *testing.T) {
 func TestJobRepository_CountBySource(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	j1 := makeScrapedJob(t, "cbs-1-"+base, discmodels.SourceIndeed)
@@ -220,7 +220,7 @@ func TestJobRepository_CountBySource(t *testing.T) {
 func TestJobRepository_MarkInactiveExcept(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	stay := makeScrapedJob(t, "stay-"+base, discmodels.SourceIndeed)
@@ -254,7 +254,7 @@ func TestJobRepository_MarkInactiveExcept(t *testing.T) {
 func TestDiscoveryService_GetStats_ReturnsValidShape(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	job := makeScrapedJob(t, "stats-"+base, discmodels.SourceIndeed)
@@ -286,7 +286,7 @@ func TestDiscoveryService_GetStats_ReturnsValidShape(t *testing.T) {
 func TestDiscovery_BulkUpsert_Idempotent(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	jobs := []*discmodels.ScrapedJob{
@@ -321,7 +321,7 @@ func TestJobRepository_Upsert_RespectsContextCancel(t *testing.T) {
 	defer cancel()
 	time.Sleep(time.Millisecond) // ensure expired
 
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 	job := makeScrapedJob(t, "cancel-"+uuid.New().String(), discmodels.SourceIndeed)
 
 	_, _, err := repo.Upsert(ctx, job)
@@ -338,7 +338,7 @@ func TestJobRepository_Upsert_RespectsContextCancel(t *testing.T) {
 func TestDiscoveryService_ScamJobDetected_IsScamSetBeforeStorage(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	base := uuid.New().String()
 	extID := "scam-svc-" + base
@@ -389,7 +389,7 @@ func TestDiscoveryService_ScamJobDetected_IsScamSetBeforeStorage(t *testing.T) {
 func TestDiscoveryService_EmptyResults_NoDBWrites(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	// Count jobs before the run.
 	var beforeCount int
@@ -431,7 +431,7 @@ func TestDiscoveryService_EmptyResults_NoDBWrites(t *testing.T) {
 func TestDiscoveryService_ScraperError_ResultHasErr(t *testing.T) {
 	pool := testhelper.NewTestPool(t)
 	ctx := context.Background()
-	repo := discrepo.NewJobRepository(pool)
+	repo := discrepo.NewJobRepository(pool, testhelper.NopLogger())
 
 	stub := &stubScraper{
 		source: discmodels.SourceGlassdoor,

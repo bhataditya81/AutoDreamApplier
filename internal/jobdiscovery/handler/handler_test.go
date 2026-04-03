@@ -19,7 +19,7 @@ import (
 func newDiscoveryRouter(t *testing.T) http.Handler {
 	t.Helper()
 	pool := testhelper.NewTestPool(t)
-	repo := repository.NewJobRepository(pool)
+	repo := repository.NewJobRepository(pool, testhelper.NopLogger())
 	svc := service.NewDiscoveryService(repo, testhelper.NopLogger())
 	h := handler.New(svc, testhelper.NopLogger())
 	return h.Router()

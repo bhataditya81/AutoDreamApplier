@@ -108,7 +108,7 @@ func TestZipRecruiterScraper_ParseHTML_ParsesJobs(t *testing.T) {
 	fixture := loadFixture(t, "ziprecruiter_search.html")
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(fixture)
+	jobs, err := s.parseHTML(context.Background(), fixture)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestZipRecruiterScraper_ParseHTML_JobFields(t *testing.T) {
 	fixture := loadFixture(t, "ziprecruiter_search.html")
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(fixture)
+	jobs, err := s.parseHTML(context.Background(), fixture)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestZipRecruiterScraper_ParseHTML_ExternalIDFormat(t *testing.T) {
 	fixture := loadFixture(t, "ziprecruiter_search.html")
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(fixture)
+	jobs, err := s.parseHTML(context.Background(), fixture)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestZipRecruiterScraper_ParseHTML_RemoteFlag(t *testing.T) {
 	fixture := loadFixture(t, "ziprecruiter_search.html")
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(fixture)
+	jobs, err := s.parseHTML(context.Background(), fixture)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestZipRecruiterScraper_ParseHTML_RemoteFlag(t *testing.T) {
 func TestZipRecruiterScraper_ParseHTML_EmptyPage(t *testing.T) {
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(`<html><body><div id="no-results">No jobs found</div></body></html>`)
+	jobs, err := s.parseHTML(context.Background(), `<html><body><div id="no-results">No jobs found</div></body></html>`)
 	if err != nil {
 		t.Fatalf("parseHTML on empty page returned unexpected error: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestZipRecruiterScraper_ParseHTML_InvalidHTML(t *testing.T) {
 	// golang.org/x/net/html is lenient — malformed HTML should not error.
 	s := newTestZipScraper()
 
-	jobs, err := s.parseHTML(`<<<<<not valid html>`)
+	jobs, err := s.parseHTML(context.Background(), `<<<<<not valid html>`)
 	if err != nil {
 		t.Fatalf("parseHTML on invalid HTML returned unexpected error: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestZipRecruiterScraper_ExtractJobCard_MissingTitle(t *testing.T) {
 	if article == nil {
 		t.Fatal("could not find article node")
 	}
-	job := s.extractJobCard(article)
+	job := s.extractJobCard(context.Background(), article)
 	if job != nil {
 		t.Errorf("expected nil for card missing title, got %+v", job)
 	}
@@ -321,7 +321,7 @@ func TestZipRecruiterScraper_ExtractJobCard_MissingCompany(t *testing.T) {
 	if article == nil {
 		t.Fatal("could not find article node")
 	}
-	job := s.extractJobCard(article)
+	job := s.extractJobCard(context.Background(), article)
 	if job != nil {
 		t.Errorf("expected nil for card missing company, got %+v", job)
 	}
@@ -339,7 +339,7 @@ func TestZipRecruiterScraper_ExtractJobCard_MissingExternalID(t *testing.T) {
 	if div == nil {
 		t.Fatal("could not find div node")
 	}
-	job := s.extractJobCard(div)
+	job := s.extractJobCard(context.Background(), div)
 	if job != nil {
 		t.Errorf("expected nil for card without data-job-id, got %+v", job)
 	}
@@ -552,7 +552,7 @@ func TestZipRecruiterScraper_EnrichATSType_FollowsRedirect(t *testing.T) {
 		ApplyURL: redirectSrv.URL,
 	}
 
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	// ApplyURL should be updated to the ATS destination because it differs
 	// from the original URL and is not a ziprecruiter.com domain.
@@ -566,7 +566,7 @@ func TestZipRecruiterScraper_EnrichATSType_EmptyURL(t *testing.T) {
 	job := &models.ScrapedJob{Title: "Engineer", ApplyURL: ""}
 
 	// Should not panic or error.
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	if job.ApplyURL != "" {
 		t.Errorf("expected empty ApplyURL unchanged, got %q", job.ApplyURL)
@@ -592,7 +592,7 @@ func TestZipRecruiterScraper_EnrichATSType_NoRedirect(t *testing.T) {
 		ApplyURL: originalURL,
 	}
 
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	// URL didn't change and is same as original — no update expected.
 	// (The scraper only updates if finalURL != job.ApplyURL)

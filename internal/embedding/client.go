@@ -97,3 +97,4 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
+}

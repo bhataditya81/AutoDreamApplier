@@ -67,7 +67,7 @@ func main() {
 	})
 
 	// Initialize job discovery components
-	jobRepo := discrepo.NewJobRepository(pool)
+	jobRepo := discrepo.NewJobRepository(pool, log)
 
 	// Register optional extra scrapers based on environment configuration.
 	// LinkedIn scraper requires a residential proxy to avoid blocks;

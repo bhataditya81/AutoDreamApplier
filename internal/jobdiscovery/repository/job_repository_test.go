@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
@@ -18,7 +19,7 @@ import (
 func newJobRepo(t *testing.T) *repository.JobRepository {
 	t.Helper()
 	pool := testhelper.NewTestPool(t)
-	return repository.NewJobRepository(pool)
+	return repository.NewJobRepository(pool, zerolog.New(nil))
 }
 
 func makeScrapedJob(extID string) *models.ScrapedJob {

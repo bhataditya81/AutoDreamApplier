@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 )
@@ -14,11 +15,12 @@ import (
 // JobRepository handles job persistence.
 type JobRepository struct {
 	pool *pgxpool.Pool
+	log  zerolog.Logger
 }
 
 // NewJobRepository creates a new job repository.
-func NewJobRepository(pool *pgxpool.Pool) *JobRepository {
-	return &JobRepository{pool: pool}
+func NewJobRepository(pool *pgxpool.Pool, log zerolog.Logger) *JobRepository {
+	return &JobRepository{pool: pool, log: log}
 }
 
 // Upsert inserts a new job or updates it if it already exists (by external_id + source_board).
