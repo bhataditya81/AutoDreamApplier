@@ -82,7 +82,7 @@ stages:
 # ── Global defaults ────────────────────────────────────────────────────────
 
 variables:
-  AWS_REGION:        "${AWS_REGION:-us-east-1}"
+  AWS_REGION:        "us-east-1"
   PROJECT_NAME:      "autodream"
   ECR_REPO_PREFIX:   "autodreamapplier"
   TF_ROOT:           "infra/terraform"
