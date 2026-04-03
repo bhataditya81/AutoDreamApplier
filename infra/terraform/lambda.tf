@@ -23,15 +23,15 @@ locals {
     DASHBOARD_URL  = var.dashboard_url
 
     # AI / LLM
-    AI_SERVICE_URL    = var.ai_service_url
+    AI_SERVICE_URL    = "http://${aws_eip.browser_pool.public_ip}:8000"
     ANTHROPIC_API_KEY = var.anthropic_api_key
     GEMINI_API_KEY    = var.gemini_api_key
     AI_PROVIDER       = var.ai_provider
     LLM_MODEL         = var.llm_model
     GEMINI_MODEL      = var.llm_model
 
-    # Browser pool (EC2 Elastic IP set after first apply)
-    BROWSER_POOL_URL = var.browser_pool_url
+    # Browser pool — auto-derived from the Elastic IP Terraform manages
+    BROWSER_POOL_URL = "http://${aws_eip.browser_pool.public_ip}:9222"
   }
 }
 

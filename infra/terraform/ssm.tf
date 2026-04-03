@@ -37,7 +37,7 @@ resource "aws_ssm_parameter" "dashboard_url" {
 resource "aws_ssm_parameter" "ai_service_url" {
   name  = "/autodream/ai_service_url"
   type  = "String"
-  value = var.ai_service_url != "" ? var.ai_service_url : "pending"
+  value = "http://${aws_eip.browser_pool.public_ip}:8000"
 }
 
 resource "aws_ssm_parameter" "s3_bucket_resumes" {

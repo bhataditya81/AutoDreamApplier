@@ -115,12 +115,6 @@ variable "llm_model" {
 
 # --- Browser pool ---
 
-variable "browser_pool_url" {
-  description = "URL of browser pool (set after EC2 Elastic IP is known)"
-  type        = string
-  default     = ""
-}
-
 variable "encryption_key" {
   description = "32-byte hex key for field encryption"
   type        = string
@@ -137,12 +131,6 @@ variable "dashboard_url" {
   description = "Frontend URL for notification links"
   type        = string
   default     = "https://autodreamapplier.vercel.app"
-}
-
-variable "ai_service_url" {
-  description = "URL of AI service (e.g. http://<ec2-ip>:8000 or external)"
-  type        = string
-  default     = ""
 }
 
 variable "linkedin_proxy_url" {
