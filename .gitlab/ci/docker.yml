@@ -130,13 +130,100 @@ build:browser-pool:
     - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
+# ── AI service deps layer (heavy: torch + sentence-transformers) ───────────
+# Built only when requirements.txt changes. Tagged :deps in ECR.
+# Skip with SKIP_DEPS_BUILD=true if you know deps haven't changed.
+
+build:ai-service-deps:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST:        tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    PLATFORM:           linux/arm64
+  before_script:
+    - apk add --no-cache aws-cli
+    - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    - aws ecr get-login-password --region "${AWS_REGION}" |
+        docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+  script:
+    - |
+      set -euo pipefail
+      if [ "${SKIP_DEPS_BUILD:-false}" = "true" ]; then
+        echo "SKIP_DEPS_BUILD=true — skipping deps image rebuild."
+        exit 0
+      fi
+      ECR_REPO="${ECR_REGISTRY}/${ECR_REPO_PREFIX}/ai-service"
+      DEPS_IMAGE="${ECR_REPO}:deps"
+
+      echo "Building ai-service deps image → ${DEPS_IMAGE}"
+      docker build \
+        --platform "${PLATFORM}" \
+        --cache-from "${DEPS_IMAGE}" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -f ai-service/Dockerfile.deps \
+        -t "${DEPS_IMAGE}" \
+        ai-service
+
+      docker push "${DEPS_IMAGE}"
+      echo "DEPS_IMAGE=${DEPS_IMAGE}" >> build.env
+      echo "Pushed ${DEPS_IMAGE}"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 2 hours
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+      changes:
+        - ai-service/requirements.txt
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
+    - when: never
+
 build:ai-service:
   extends: .docker-build-ecr
+  needs:
+    - job: build:ai-service-deps
+      optional: true   # skipped on push if requirements.txt unchanged
   variables:
     SERVICE_NAME: ai-service
     DOCKERFILE:   ai-service/Dockerfile
     CONTEXT:      ai-service
     PLATFORM:     linux/arm64
+  before_script:
+    - apk add --no-cache aws-cli
+    - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    - aws ecr get-login-password --region "${AWS_REGION}" |
+        docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+    - |
+      # Use pre-built deps image as base to skip pip install entirely
+      DEPS_IMAGE="${ECR_REGISTRY}/${ECR_REPO_PREFIX}/ai-service:deps"
+      export DOCKER_BUILD_ARGS="--build-arg BASE_IMAGE=${DEPS_IMAGE}"
+  script:
+    - |
+      set -euo pipefail
+      ECR_REPO="${ECR_REGISTRY}/${ECR_REPO_PREFIX}/ai-service"
+      IMAGE_SHA="${ECR_REPO}:${CI_COMMIT_SHA}"
+      IMAGE_LATEST="${ECR_REPO}:latest"
+      DEPS_IMAGE="${ECR_REGISTRY}/${ECR_REPO_PREFIX}/ai-service:deps"
+
+      echo "Building ai-service → ${IMAGE_SHA}"
+      docker build \
+        --platform "${PLATFORM}" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg BASE_IMAGE="${DEPS_IMAGE}" \
+        --cache-from "${IMAGE_LATEST}" \
+        -f ai-service/Dockerfile \
+        -t "${IMAGE_SHA}" \
+        -t "${IMAGE_LATEST}" \
+        ai-service
+
+      docker push "${IMAGE_SHA}"
+      docker push "${IMAGE_LATEST}"
+      echo "ECR_IMAGE_AI_SERVICE=${IMAGE_SHA}" >> build.env
+      echo "Pushed ${IMAGE_SHA}"
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
     - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'

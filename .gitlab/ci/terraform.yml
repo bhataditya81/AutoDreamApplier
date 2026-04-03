@@ -85,6 +85,7 @@ terraform:apply:full:
     - "deploy:build:apply-engine"
     - "deploy:build:browser-pool"
     - "deploy:build:ai-service"
+    - "deploy:build:ai-service-deps"
   script:
     - terraform apply -auto-approve
     - |

@@ -45,9 +45,13 @@ deploy:build:browser-pool:
   extends: build:browser-pool
   needs: ["terraform:apply:ecr"]
 
+deploy:build:ai-service-deps:
+  extends: build:ai-service-deps
+  needs: ["terraform:apply:ecr"]
+
 deploy:build:ai-service:
   extends: build:ai-service
-  needs: ["terraform:apply:ecr"]
+  needs: ["terraform:apply:ecr", "deploy:build:ai-service-deps"]
 
 # ── Stage 5: Update all Lambda functions ──────────────────────────────────
 

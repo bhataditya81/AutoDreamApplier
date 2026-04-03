@@ -1,0 +1,9 @@
+# Pre-built dependencies layer for ai-service.
+# Rebuilt only when requirements.txt changes.
+# Tagged as :deps in ECR and used as BASE_IMAGE in the main Dockerfile.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
