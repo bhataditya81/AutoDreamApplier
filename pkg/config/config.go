@@ -133,8 +133,8 @@ func Load() *Config {
 			Password:        getEnv("DB_PASSWORD", "autodream_dev"),
 			Name:            getEnv("DB_NAME", "autodreamapplier"),
 			SSLMode:         getEnv("DB_SSL_MODE", "disable"),
-			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 10),
-			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 2),
+			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 5),
 			ConnMaxLifetime: getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Redis: RedisConfig{
