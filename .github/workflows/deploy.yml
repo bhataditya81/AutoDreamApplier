@@ -1,0 +1,508 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: "Skip validate & test jobs"
+        type: boolean
+        default: false
+      skip_deps_build:
+        description: "Skip ai-service deps image rebuild"
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPO_PREFIX: autodreamapplier
+  PROJECT_NAME: autodream
+  TF_ROOT: infra/terraform
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+# ── Validate & Test (skippable) ───────────────────────────────────────────
+
+  go-test:
+    name: go:test
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    env:
+      CGO_ENABLED: "1"
+      APP_ENV: test
+      DEV_JWT_SECRET: ci-test-secret-32byteslong12345
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - run: sudo apt-get install -y gcc
+      - run: make test-backend
+
+  py-test:
+    name: py:test
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    env:
+      APP_ENV: test
+      ANTHROPIC_API_KEY: test-key-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pytest pytest-asyncio httpx && pip install -r ai-service/requirements.txt
+      - run: cd ai-service && pytest -q tests
+
+# ── Terraform Plan ────────────────────────────────────────────────────────
+
+  terraform-plan:
+    name: terraform:plan
+    runs-on: ubuntu-latest
+    needs: [go-test, py-test]
+    if: ${{ always() && (needs.go-test.result == 'success' || needs.go-test.result == 'skipped') && (needs.py-test.result == 'success' || needs.py-test.result == 'skipped') }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_database_url: ${{ secrets.TF_VAR_DATABASE_URL }}
+      TF_VAR_redis_url: ${{ secrets.TF_VAR_REDIS_URL }}
+      TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+      TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
+      TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
+      TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
+      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+      TF_VAR_ai_provider: gemini
+      TF_VAR_llm_model: gemini-1.5-flash
+      TF_VAR_app_env: staging
+      TF_VAR_s3_bucket_resumes: autodream-resumes-prod
+      TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.7.0" }
+      - run: terraform init
+        working-directory: ${{ env.TF_ROOT }}
+      - run: terraform validate
+        working-directory: ${{ env.TF_ROOT }}
+      - run: terraform plan -detailed-exitcode || [ $? -eq 2 ]
+        working-directory: ${{ env.TF_ROOT }}
+
+# ── Apply ECR (manual gate via environment protection) ────────────────────
+
+  terraform-apply-ecr:
+    name: terraform:apply:ecr
+    runs-on: ubuntu-latest
+    needs: [terraform-plan]
+    environment: production         # ← requires reviewer approval in GitHub
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_database_url: ${{ secrets.TF_VAR_DATABASE_URL }}
+      TF_VAR_redis_url: ${{ secrets.TF_VAR_REDIS_URL }}
+      TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+      TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
+      TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
+      TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
+      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+      TF_VAR_ai_provider: gemini
+      TF_VAR_llm_model: gemini-1.5-flash
+      TF_VAR_app_env: staging
+      TF_VAR_s3_bucket_resumes: autodream-resumes-prod
+      TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.7.0" }
+      - run: terraform init
+        working-directory: ${{ env.TF_ROOT }}
+      - run: |
+          terraform apply -auto-approve \
+            -target=aws_ecr_repository.services \
+            -target=aws_ecr_lifecycle_policy.services
+        working-directory: ${{ env.TF_ROOT }}
+
+# ── Build all services (parallel) ────────────────────────────────────────
+
+  build-ai-service-deps:
+    name: build:ai-service-deps
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    if: ${{ !inputs.skip_deps_build }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          DEPS="${ECR}/${ECR_REPO_PREFIX}/ai-service:deps"
+          docker build --platform linux/arm64 \
+            --cache-from "${DEPS}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -f ai-service/Dockerfile.deps \
+            -t "${DEPS}" ai-service
+          docker push "${DEPS}"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-api-gateway:
+    name: build:api-gateway
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/api-gateway"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/api-gateway/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-job-discovery:
+    name: build:job-discovery
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/job-discovery"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/job-discovery/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-job-matcher:
+    name: build:job-matcher
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/job-matcher"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/job-matcher/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-followup-scheduler:
+    name: build:followup-scheduler
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/followup-scheduler"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/followup-scheduler/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-apply-engine:
+    name: build:apply-engine
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/apply-engine"
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/ec2/apply-engine/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-browser-pool:
+    name: build:browser-pool
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/browser-pool"
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/ec2/browser-pool/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-ai-service:
+    name: build:ai-service
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-ecr, build-ai-service-deps]
+    if: ${{ always() && needs.terraform-apply-ecr.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/ai-service"
+          DEPS="${REPO}:deps"
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --build-arg BASE_IMAGE="${DEPS}" \
+            --cache-from "${REPO}:latest" \
+            -f ai-service/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" \
+            ai-service
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+# ── Terraform apply full (after all images pushed) ────────────────────────
+
+  terraform-apply-full:
+    name: terraform:apply:full
+    runs-on: ubuntu-latest
+    needs:
+      - build-api-gateway
+      - build-job-discovery
+      - build-job-matcher
+      - build-followup-scheduler
+      - build-apply-engine
+      - build-browser-pool
+      - build-ai-service
+      - build-ai-service-deps
+    if: ${{ always() && needs.build-api-gateway.result == 'success' }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_database_url: ${{ secrets.TF_VAR_DATABASE_URL }}
+      TF_VAR_redis_url: ${{ secrets.TF_VAR_REDIS_URL }}
+      TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+      TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
+      TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
+      TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
+      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+      TF_VAR_ai_provider: gemini
+      TF_VAR_llm_model: gemini-1.5-flash
+      TF_VAR_app_env: staging
+      TF_VAR_s3_bucket_resumes: autodream-resumes-prod
+      TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+    outputs:
+      ec2_ip: ${{ steps.outputs.outputs.ec2_ip }}
+      api_url: ${{ steps.outputs.outputs.api_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: false
+      - run: terraform init
+        working-directory: ${{ env.TF_ROOT }}
+      - run: terraform apply -auto-approve
+        working-directory: ${{ env.TF_ROOT }}
+      - id: outputs
+        run: |
+          echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
+          echo "api_url=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
+        working-directory: ${{ env.TF_ROOT }}
+
+# ── Deploy Lambda functions ───────────────────────────────────────────────
+
+  deploy-lambda-api-gateway:
+    name: deploy:lambda:api-gateway
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full, build-api-gateway]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/api-gateway:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-api-gateway" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-api-gateway"
+
+  deploy-lambda-job-discovery:
+    name: deploy:lambda:job-discovery
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full, build-job-discovery]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-discovery:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-discovery" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-discovery"
+
+  deploy-lambda-job-matcher:
+    name: deploy:lambda:job-matcher
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full, build-job-matcher]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-matcher:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-matcher" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-matcher"
+
+  deploy-lambda-followup-scheduler:
+    name: deploy:lambda:followup-scheduler
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full, build-followup-scheduler]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/followup-scheduler:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-followup-scheduler" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-followup-scheduler"
+
+# ── Deploy EC2 + Frontend ─────────────────────────────────────────────────
+
+  deploy-ec2:
+    name: deploy:ec2
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full, build-apply-engine, build-browser-pool, build-ai-service]
+    if: ${{ always() && needs.terraform-apply-full.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: bash .gitlab/scripts/deploy-ec2.sh
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
+  deploy-frontend:
+    name: deploy:frontend
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-full]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: bash .gitlab/scripts/deploy-frontend.sh
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          FORCE_DEPLOY: "true"
+
+# ── Smoke test ────────────────────────────────────────────────────────────
+
+  verify-health:
+    name: verify:health
+    runs-on: ubuntu-latest
+    needs: [deploy-lambda-api-gateway, deploy-ec2, deploy-frontend]
+    if: ${{ always() && needs.deploy-lambda-api-gateway.result == 'success' }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          API_URL=$(aws ssm get-parameter --name /autodream/api_endpoint --query 'Parameter.Value' --output text)
+          echo "Smoke-testing ${API_URL}/health ..."
+          for i in $(seq 1 5); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${API_URL}/health" 2>/dev/null || echo "000")
+            [ "$STATUS" = "200" ] && echo "Health check passed." && exit 0
+            echo "Attempt ${i}/5: HTTP ${STATUS} — retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed." && exit 1

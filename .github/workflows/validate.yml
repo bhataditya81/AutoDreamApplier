@@ -1,0 +1,88 @@
+name: Validate & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  go-fmt:
+    name: go:fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - run: test -z "$(gofmt -l .)"
+
+  go-lint:
+    name: go:lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - uses: golangci/golangci-lint-action@v6
+        with: { version: v1.64.8 }
+
+  go-test:
+    name: go:test
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1"
+      APP_ENV: test
+      DEV_JWT_SECRET: ci-test-secret-32byteslong12345
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - run: sudo apt-get install -y gcc
+      - run: make test-backend
+
+  web-lint:
+    name: web:lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run lint
+
+  web-typecheck:
+    name: web:typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run type-check
+
+  py-lint:
+    name: py:lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install ruff
+      - run: ruff check ai-service
+
+  py-test:
+    name: py:test
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: test
+      ANTHROPIC_API_KEY: test-key-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pytest pytest-asyncio httpx && pip install -r ai-service/requirements.txt
+      - run: cd ai-service && pytest -q tests

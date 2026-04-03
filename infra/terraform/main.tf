@@ -8,11 +8,13 @@ terraform {
     }
   }
 
-  # GitLab-managed HTTP state backend.
-  # In CI the init flags are injected by .gitlab/ci/terraform.yml.
-  # For local dev, pass -backend-config flags or set TF_HTTP_* env vars.
-  # See: https://docs.gitlab.com/ee/user/infrastructure/iac/terraform_state.html
-  backend "http" {}
+  backend "s3" {
+    bucket         = "autodream-terraform-state"
+    key            = "production/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "autodream-terraform-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
