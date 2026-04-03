@@ -22,7 +22,7 @@ type ProviderConfig struct {
 	ServiceURL string
 
 	// Anthropic settings (provider == "anthropic")
-	AnthropicKey string
+	AnthropicKey   string
 	AnthropicModel string // default: claude-3-haiku-20240307
 
 	// Google Gemini settings (provider == "gemini")

@@ -68,7 +68,7 @@ func NewLinkedInScraper(proxyURL string) Scraper {
 }
 
 func (s *linkedInScraper) Source() models.JobSource { return models.SourceLinkedIn }
-func (s *linkedInScraper) Name() string              { return "LinkedIn (Easy Apply)" }
+func (s *linkedInScraper) Name() string             { return "LinkedIn (Easy Apply)" }
 
 // Search scrapes LinkedIn Easy Apply job listings matching the given parameters.
 // Results are emitted to the returned channel as they are found.

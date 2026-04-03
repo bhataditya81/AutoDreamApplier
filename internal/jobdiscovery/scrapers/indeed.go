@@ -49,7 +49,7 @@ func NewIndeedScraper() Scraper {
 }
 
 func (s *indeedScraper) Source() models.JobSource { return models.SourceIndeed }
-func (s *indeedScraper) Name() string              { return "Indeed Scraper" }
+func (s *indeedScraper) Name() string             { return "Indeed Scraper" }
 
 // Search searches Indeed for jobs matching the given parameters.
 // Results are emitted to the returned channel as they are found.
@@ -123,8 +123,8 @@ func (s *indeedScraper) buildSearchURL(query, location string, remote bool, star
 	}
 
 	params.Set("start", strconv.Itoa(start))
-	params.Set("sort", "date")      // Most recent first
-	params.Set("fromage", "14")     // Last 14 days
+	params.Set("sort", "date")  // Most recent first
+	params.Set("fromage", "14") // Last 14 days
 
 	return "https://www.indeed.com/jobs?" + params.Encode()
 }
@@ -318,7 +318,7 @@ func (s *indeedScraper) enrichATSType(job *models.ScrapedJob) {
 
 	// The final URL after our limited redirect tracing.
 	finalURL := resp.Request.URL.String()
-	
+
 	// If it's still an Indeed URL, try to parse the actual URL from Query Params
 	// (Sometimes Indeed embeds the target inside `continue` or similar params)
 	if strings.Contains(finalURL, "indeed.com") {

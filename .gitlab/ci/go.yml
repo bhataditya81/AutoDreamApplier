@@ -20,7 +20,7 @@ go:lint:
   rules: !reference [.rules, ci, rules]
   before_script:
     - apk add --no-cache git
-    - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
+    - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
   script:
     - golangci-lint run ./...
   cache:

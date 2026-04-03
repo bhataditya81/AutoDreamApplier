@@ -68,34 +68,34 @@ func New(ctx context.Context, cfg Config, log zerolog.Logger) (*Client, error) {
 
 // ApplicationSubmittedData is the template context for the "submitted" email.
 type ApplicationSubmittedData struct {
-	UserName       string
-	JobTitle       string
-	Company        string
-	ApplyURL       string
-	ApplicationID  string
-	DashboardURL   string
-	Year           int
+	UserName      string
+	JobTitle      string
+	Company       string
+	ApplyURL      string
+	ApplicationID string
+	DashboardURL  string
+	Year          int
 }
 
 // ApplicationFailedData is the template context for the "failed" email.
 type ApplicationFailedData struct {
-	UserName      string
-	JobTitle      string
-	Company       string
-	ErrorSummary  string
-	DashboardURL  string
-	Year          int
+	UserName     string
+	JobTitle     string
+	Company      string
+	ErrorSummary string
+	DashboardURL string
+	Year         int
 }
 
 // OutcomeData is the template context for the "outcome" email (interview/offer/rejected).
 type OutcomeData struct {
-	UserName      string
-	JobTitle      string
-	Company       string
-	Outcome       string // "Interview Request", "Job Offer", "Rejection"
-	OutcomeEmoji  string // 🎉 / 🚀 / 😔
-	DashboardURL  string
-	Year          int
+	UserName     string
+	JobTitle     string
+	Company      string
+	Outcome      string // "Interview Request", "Job Offer", "Rejection"
+	OutcomeEmoji string // 🎉 / 🚀 / 😔
+	DashboardURL string
+	Year         int
 }
 
 // WeeklyDigestData is the template context for the weekly summary email.

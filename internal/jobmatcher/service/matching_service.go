@@ -28,11 +28,11 @@ const (
 
 // MatchingService orchestrates the matching loop.
 type MatchingService struct {
-	pool            *pgxpool.Pool
-	matchRepo       *repository.MatchRepository
-	scorer          *scorer.Scorer
-	semanticScorer  *scorer.SemanticScorer // optional; nil means keyword-only mode
-	log             zerolog.Logger
+	pool           *pgxpool.Pool
+	matchRepo      *repository.MatchRepository
+	scorer         *scorer.Scorer
+	semanticScorer *scorer.SemanticScorer // optional; nil means keyword-only mode
+	log            zerolog.Logger
 }
 
 // New creates a new MatchingService.
@@ -57,7 +57,7 @@ func (s *MatchingService) WithSemanticScorer(ss *scorer.SemanticScorer) *Matchin
 type RunResult struct {
 	UserID       uuid.UUID
 	JobsScored   int
-	JobsFiltered int     // excluded by score or exclusion rules
+	JobsFiltered int // excluded by score or exclusion rules
 	MatchesNew   int
 	Duration     time.Duration
 }

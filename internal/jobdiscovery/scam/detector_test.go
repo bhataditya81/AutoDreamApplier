@@ -146,8 +146,8 @@ func TestDetector_ScoreCappedAt1(t *testing.T) {
 	// Trigger every signal possible.
 	salary := 400001
 	job := &models.ScrapedJob{
-		Title:       "Work From Home Earn Data Entry No Experience",
-		Company:     "",
+		Title:   "Work From Home Earn Data Entry No Experience",
+		Company: "",
 		Description: "Pay to apply. Training fee $99. Contact us at scammer@gmail.com. Unlimited earning. Passive income. Be your own boss. Ground floor opportunity. MLM team. Starter kit required. " +
 			"$500/hr guaranteed.",
 		URL:       "http://totally-not-related-domain.biz/apply",
@@ -229,11 +229,17 @@ func TestDetector_GoodJob_NoRedFlags(t *testing.T) {
 // TestDetector_BoundaryExactly4Signals_IsScam verifies that exactly 4 signals
 // yields a score >= 0.5 (threshold is >=0.5 → IsScam=true).
 // We trigger:
-//   Signal 1 high salary (+0.3)  Signal 2 upfront payment (+0.4) → 0.7 already ≥ 0.5
+//
+//	Signal 1 high salary (+0.3)  Signal 2 upfront payment (+0.4) → 0.7 already ≥ 0.5
+//
 // Use a minimal combination that reaches exactly 0.5:
-//   Signal 3 no company (+0.2) + Signal 7 short description (+0.15) + Signal 4 suspicious title (+0.2) = 0.55
+//
+//	Signal 3 no company (+0.2) + Signal 7 short description (+0.15) + Signal 4 suspicious title (+0.2) = 0.55
+//
 // Actually the cleanest exact-0.5 combination is:
-//   Signal 3 (+0.2) + Signal 7 short desc (+0.15) + Signal 4 title (+0.2) = 0.55 → still > 0.5
+//
+//	Signal 3 (+0.2) + Signal 7 short desc (+0.15) + Signal 4 title (+0.2) = 0.55 → still > 0.5
+//
 // Simplest ≥0.5: Signal 2 alone (+0.4) + Signal 3 (+0.2) = 0.6, or just Signal 2 + Signal 5:
 // To get score that lands precisely at 0.5 we use Signal 3 (+0.2) + Signal 4 (+0.2) + Signal 7 (+0.15) = 0.55
 func TestDetector_BoundaryScore_AtLeast05_IsScam(t *testing.T) {
@@ -244,9 +250,9 @@ func TestDetector_BoundaryScore_AtLeast05_IsScam(t *testing.T) {
 	// Signal 7: description < 100 chars (+0.15) → total = 0.55 ≥ 0.5 → IsScam=true
 	// We avoid URL mismatch (Signal 6) by leaving company empty (skips that check).
 	job := &models.ScrapedJob{
-		Title:       "data entry no experience",          // Signal 4
-		Company:     "",                                  // Signal 3
-		Description: "Short job post.",                  // Signal 7: < 100 chars
+		Title:       "data entry no experience", // Signal 4
+		Company:     "",                         // Signal 3
+		Description: "Short job post.",          // Signal 7: < 100 chars
 		URL:         "http://example.com/apply",
 	}
 
@@ -265,7 +271,8 @@ func TestDetector_BoundaryScore_AtLeast05_IsScam(t *testing.T) {
 // TestDetector_BelowBoundary_ThreeSignals_NotScam verifies that a job with
 // only 3 small signals stays below 0.5 and is NOT classified as a scam.
 // We use:
-//   Signal 5 personal email (+0.25) + Signal 7 short desc (+0.15) = 0.40 < 0.5
+//
+//	Signal 5 personal email (+0.25) + Signal 7 short desc (+0.15) = 0.40 < 0.5
 func TestDetector_BelowBoundary_ThreeSignals_NotScam(t *testing.T) {
 	d := scam.New()
 
@@ -277,7 +284,7 @@ func TestDetector_BelowBoundary_ThreeSignals_NotScam(t *testing.T) {
 		Title:       "Office Assistant",
 		Company:     "BrightOffice",
 		Description: "Apply now: contact us at hr@gmail.com",          // < 100 chars + email
-		URL:         "https://brightoffice.com/jobs/office-assistant",  // company word present
+		URL:         "https://brightoffice.com/jobs/office-assistant", // company word present
 	}
 
 	result := d.Classify(job)

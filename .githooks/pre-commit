@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Pre-commit hook — mirrors the CI validate stage.
+# Runs only on staged files to keep it fast.
+set -euo pipefail
+
+PASS=true
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+fail() { echo -e "${RED}FAIL${NC} $1"; PASS=false; }
+ok()   { echo -e "${GREEN} OK ${NC} $1"; }
+skip() { echo -e "${YELLOW}SKIP${NC} $1"; }
+
+# ── Go checks ─────────────────────────────────────────────────────────────
+
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -n "$STAGED_GO" ]; then
+  # gofmt
+  UNFORMATTED=$(echo "$STAGED_GO" | xargs gofmt -l 2>/dev/null | tr -d '\r')
+  if [ -n "$UNFORMATTED" ]; then
+    fail "go:fmt — unformatted files (run: gofmt -w .):"
+    echo "$UNFORMATTED" | sed 's/^/       /'
+  else
+    ok "go:fmt"
+  fi
+
+  # go vet (faster than golangci-lint, catches real bugs)
+  if go vet ./... 2>&1 | grep -v "^#"; then
+    fail "go:vet"
+  else
+    ok "go:vet"
+  fi
+else
+  skip "go:fmt  (no Go files staged)"
+  skip "go:vet  (no Go files staged)"
+fi
+
+# ── Frontend checks ────────────────────────────────────────────────────────
+
+STAGED_WEB=$(git diff --cached --name-only --diff-filter=ACM | grep '^frontend/' || true)
+
+if [ -n "$STAGED_WEB" ]; then
+  if [ ! -d "frontend/node_modules" ]; then
+    echo "  Installing frontend deps..."
+    npm --prefix frontend install --silent
+  fi
+
+  # ESLint
+  if npm --prefix frontend run lint --silent 2>&1; then
+    ok "web:lint"
+  else
+    fail "web:lint — fix ESLint errors above"
+  fi
+
+  # TypeScript
+  if npm --prefix frontend run type-check --silent 2>&1; then
+    ok "web:typecheck"
+  else
+    fail "web:typecheck — fix TypeScript errors above"
+  fi
+else
+  skip "web:lint      (no frontend files staged)"
+  skip "web:typecheck (no frontend files staged)"
+fi
+
+# ── Python checks ──────────────────────────────────────────────────────────
+
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+
+if [ -n "$STAGED_PY" ]; then
+  if command -v ruff &>/dev/null; then
+    if echo "$STAGED_PY" | xargs ruff check 2>&1; then
+      ok "py:lint (ruff)"
+    else
+      fail "py:lint — fix ruff errors above"
+    fi
+  elif command -v flake8 &>/dev/null; then
+    if echo "$STAGED_PY" | xargs flake8 2>&1; then
+      ok "py:lint (flake8)"
+    else
+      fail "py:lint — fix flake8 errors above"
+    fi
+  else
+    skip "py:lint (ruff/flake8 not installed)"
+  fi
+else
+  skip "py:lint (no Python files staged)"
+fi
+
+# ── Result ─────────────────────────────────────────────────────────────────
+
+echo ""
+if [ "$PASS" = "false" ]; then
+  echo -e "${RED}Pre-commit checks failed. Fix the issues above and re-stage.${NC}"
+  echo "  To skip (not recommended): git commit --no-verify"
+  exit 1
+fi
+echo -e "${GREEN}All checks passed.${NC}"

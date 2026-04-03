@@ -331,7 +331,7 @@ func TestValidateDevToken_Whitebox_MissingTokenUse(t *testing.T) {
 }
 
 // TestLogin_FindPasswordHashError tests Login when FindPasswordHash returns empty hash.
-// This exercises the "hash == ''" branch.
+// This exercises the "hash == ”" branch.
 func TestMiddleware_InvalidBearerFormat(t *testing.T) {
 	ca := &CognitoAuth{
 		devSecret: wbDevSecret,

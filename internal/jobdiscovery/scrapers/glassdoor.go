@@ -57,7 +57,7 @@ func NewGlassdoorScraper() Scraper {
 }
 
 func (s *glassdoorScraper) Source() models.JobSource { return models.SourceGlassdoor }
-func (s *glassdoorScraper) Name() string              { return "Glassdoor Scraper" }
+func (s *glassdoorScraper) Name() string             { return "Glassdoor Scraper" }
 
 // Search scrapes Glassdoor for jobs matching the given parameters.
 // Results are emitted to the returned channel as they are found.
@@ -242,8 +242,8 @@ type nextDataJobListing struct {
 	JobListingID string `json:"jobListingId"`
 	JobTitleText string `json:"jobTitleText"`
 	// Employer info may be nested differently across page versions.
-	EmployerNameFromSearch string `json:"employerNameFromSearch"`
-	LocationName           string `json:"locationName"`
+	EmployerNameFromSearch string   `json:"employerNameFromSearch"`
+	LocationName           string   `json:"locationName"`
 	RemoteWorkTypes        []string `json:"remoteWorkTypes"`
 	PayPeriodAdjustedPay   struct {
 		P10 *float64 `json:"p10"`
@@ -615,7 +615,7 @@ func (s *glassdoorScraper) extractFieldFromNode(n *html.Node, job *models.Scrape
 		containsAny(classes,
 			"location",
 			"JobCard_location",
-			"jobLocation",  // legacy: <span class="jobLocation">
+			"jobLocation", // legacy: <span class="jobLocation">
 		):
 		if job.Location == "" {
 			loc := strings.TrimSpace(textContent(n))

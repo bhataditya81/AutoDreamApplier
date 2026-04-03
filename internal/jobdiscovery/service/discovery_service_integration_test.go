@@ -9,8 +9,8 @@ import (
 
 	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
-	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
+	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
 	"github.com/bhata/AutoDreamApplier/internal/testhelper"
 	"github.com/google/uuid"
 )
@@ -238,7 +238,7 @@ func TestJobRepository_MarkInactiveExcept(t *testing.T) {
 	}
 
 	var stayActive, goneActive bool
-	pool.QueryRow(ctx, `SELECT is_active FROM jobs WHERE id = $1`, stayID).Scan(&stayActive)   //nolint:errcheck
+	pool.QueryRow(ctx, `SELECT is_active FROM jobs WHERE id = $1`, stayID).Scan(&stayActive) //nolint:errcheck
 	pool.QueryRow(ctx, `SELECT is_active FROM jobs WHERE id = $1`, goneID).Scan(&goneActive) //nolint:errcheck
 
 	if !stayActive {

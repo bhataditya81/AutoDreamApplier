@@ -20,15 +20,15 @@ const (
 type ATSType string
 
 const (
-	ATSGreenhouse    ATSType = "greenhouse"
-	ATSLever         ATSType = "lever"
-	ATSWorkday       ATSType = "workday"
-	ATSICIMS         ATSType = "icims"
-	ATSTaleo         ATSType = "taleo"
-	ATSSuccessFactors ATSType = "successfactors"
+	ATSGreenhouse      ATSType = "greenhouse"
+	ATSLever           ATSType = "lever"
+	ATSWorkday         ATSType = "workday"
+	ATSICIMS           ATSType = "icims"
+	ATSTaleo           ATSType = "taleo"
+	ATSSuccessFactors  ATSType = "successfactors"
 	ATSSmartRecruiters ATSType = "smartrecruiters"
-	ATSBambooHR      ATSType = "bamboohr"
-	ATSUnknown       ATSType = "unknown"
+	ATSBambooHR        ATSType = "bamboohr"
+	ATSUnknown         ATSType = "unknown"
 )
 
 // Job represents a discovered job posting.
@@ -80,13 +80,13 @@ type ScrapedJob struct {
 
 // DiscoveryRun tracks a single scraping run for observability.
 type DiscoveryRun struct {
-	ID          uuid.UUID `db:"id"`
-	Source      JobSource `db:"source"`
-	StartedAt   time.Time `db:"started_at"`
-	FinishedAt  *time.Time `db:"finished_at"`
-	JobsFound   int        `db:"jobs_found"`
-	JobsNew     int        `db:"jobs_new"`
-	JobsDupe    int        `db:"jobs_dupe"`
-	ErrorMsg    string     `db:"error_msg"`
-	Success     bool       `db:"success"`
+	ID         uuid.UUID  `db:"id"`
+	Source     JobSource  `db:"source"`
+	StartedAt  time.Time  `db:"started_at"`
+	FinishedAt *time.Time `db:"finished_at"`
+	JobsFound  int        `db:"jobs_found"`
+	JobsNew    int        `db:"jobs_new"`
+	JobsDupe   int        `db:"jobs_dupe"`
+	ErrorMsg   string     `db:"error_msg"`
+	Success    bool       `db:"success"`
 }

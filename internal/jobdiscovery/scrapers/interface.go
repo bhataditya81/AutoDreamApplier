@@ -8,11 +8,11 @@ import (
 
 // SearchParams defines the query parameters for a job search.
 type SearchParams struct {
-	Keywords []string // e.g. ["software engineer", "golang"]
-	Location string   // e.g. "Remote" or "San Francisco, CA"
-	Remote   bool     // only remote jobs
-	MaxPages int      // max pages to scrape (default 5)
-	SalaryMin int     // optional salary filter
+	Keywords  []string // e.g. ["software engineer", "golang"]
+	Location  string   // e.g. "Remote" or "San Francisco, CA"
+	Remote    bool     // only remote jobs
+	MaxPages  int      // max pages to scrape (default 5)
+	SalaryMin int      // optional salary filter
 }
 
 // Scraper is the interface that all job board scrapers must implement.

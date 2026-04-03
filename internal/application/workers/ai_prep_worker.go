@@ -33,13 +33,13 @@ type S3Buckets struct {
 type AIPrepWorker struct {
 	river.WorkerDefaults[tasks.AIPrepArgs]
 
-	appRepo      *repository.ApplicationRepository
-	aiClient     aimodels.Provider
-	s3Client     *pkgs3.Client
-	riverClient  *river.Client[pgx.Tx]
-	buckets      S3Buckets
-	webhookSvc   *notification.WebhookService // nil-safe; no-ops when not configured
-	log          zerolog.Logger
+	appRepo     *repository.ApplicationRepository
+	aiClient    aimodels.Provider
+	s3Client    *pkgs3.Client
+	riverClient *river.Client[pgx.Tx]
+	buckets     S3Buckets
+	webhookSvc  *notification.WebhookService // nil-safe; no-ops when not configured
+	log         zerolog.Logger
 }
 
 // NewAIPrepWorker constructs an AIPrepWorker.

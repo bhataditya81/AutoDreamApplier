@@ -38,23 +38,23 @@ type MatchInsert struct {
 
 // MatchWithJob combines a match with its job details for the API response.
 type MatchWithJob struct {
-	ID             uuid.UUID           `json:"id"`
-	UserID         uuid.UUID           `json:"user_id"`
-	JobID          uuid.UUID           `json:"job_id"`
-	MatchScore     float64             `json:"match_score"`
+	ID             uuid.UUID             `json:"id"`
+	UserID         uuid.UUID             `json:"user_id"`
+	JobID          uuid.UUID             `json:"job_id"`
+	MatchScore     float64               `json:"match_score"`
 	MatchBreakdown models.ScoreBreakdown `json:"match_breakdown"`
-	Status         models.MatchStatus  `json:"status"`
-	UserFeedback   string              `json:"user_feedback,omitempty"`
-	CreatedAt      time.Time           `json:"created_at"`
+	Status         models.MatchStatus    `json:"status"`
+	UserFeedback   string                `json:"user_feedback,omitempty"`
+	CreatedAt      time.Time             `json:"created_at"`
 	// Denormalized job fields for display
-	JobTitle       string              `json:"job_title"`
-	JobCompany     string              `json:"job_company"`
-	JobLocation    string              `json:"job_location"`
-	JobIsRemote    bool                `json:"job_is_remote"`
-	JobSalaryMin   *int                `json:"job_salary_min"`
-	JobSalaryMax   *int                `json:"job_salary_max"`
-	JobURL         string              `json:"job_url"`
-	JobATSType     discmodels.ATSType  `json:"job_ats_type"`
+	JobTitle     string             `json:"job_title"`
+	JobCompany   string             `json:"job_company"`
+	JobLocation  string             `json:"job_location"`
+	JobIsRemote  bool               `json:"job_is_remote"`
+	JobSalaryMin *int               `json:"job_salary_min"`
+	JobSalaryMax *int               `json:"job_salary_max"`
+	JobURL       string             `json:"job_url"`
+	JobATSType   discmodels.ATSType `json:"job_ats_type"`
 }
 
 // GetUserIDBySub resolves a user's internal UUID from their cognito_sub.

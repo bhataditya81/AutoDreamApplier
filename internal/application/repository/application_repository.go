@@ -583,11 +583,11 @@ type ActiveUserDigest struct {
 
 // WeeklyStats holds aggregate application activity for a given time window.
 type WeeklyStats struct {
-	Applied     int
-	Interviews  int
-	Offers      int
-	Rejections  int
-	Pending     int // current pending matches (not time-scoped)
+	Applied    int
+	Interviews int
+	Offers     int
+	Rejections int
+	Pending    int // current pending matches (not time-scoped)
 }
 
 // GetAllActiveUsersForDigest returns every active user's ID, email, and name.

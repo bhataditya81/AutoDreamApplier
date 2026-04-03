@@ -37,7 +37,7 @@ type FunnelStats struct {
 
 // DailyCount is one data point in the over-time chart.
 type DailyCount struct {
-	Date  string `json:"date"`  // YYYY-MM-DD
+	Date  string `json:"date"` // YYYY-MM-DD
 	Count int    `json:"count"`
 }
 

@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	matchmodels "github.com/bhata/AutoDreamApplier/internal/jobmatcher/models"
 	appRepo "github.com/bhata/AutoDreamApplier/internal/application/repository"
 	appSvc "github.com/bhata/AutoDreamApplier/internal/application/service"
+	matchmodels "github.com/bhata/AutoDreamApplier/internal/jobmatcher/models"
 	matchRepo "github.com/bhata/AutoDreamApplier/internal/jobmatcher/repository"
 )
 

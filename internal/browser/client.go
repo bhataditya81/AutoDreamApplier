@@ -19,9 +19,9 @@ const applyTimeout = 180 * time.Second
 
 // Client is an HTTP client for the browser-pool microservice.
 type Client struct {
-	base   string
-	http   *http.Client
-	log    zerolog.Logger
+	base string
+	http *http.Client
+	log  zerolog.Logger
 }
 
 // New creates a browser pool Client pointing at baseURL.

@@ -12,11 +12,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	dischandler "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/handler"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
 	"github.com/bhata/AutoDreamApplier/internal/jobdiscovery/scrapers"
 	discsvc "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/service"
-	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	"github.com/bhata/AutoDreamApplier/pkg/config"
 	"github.com/bhata/AutoDreamApplier/pkg/database"
 	"github.com/bhata/AutoDreamApplier/pkg/logger"

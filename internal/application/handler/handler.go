@@ -64,7 +64,7 @@ func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Post("/submit", h.Submit)
-	r.Get("/stats", h.Stats)          // registered before /{appID} for clarity
+	r.Get("/stats", h.Stats) // registered before /{appID} for clarity
 	r.Get("/", h.List)
 	r.Get("/{appID}", h.GetByID)
 	r.Put("/{appID}/outcome", h.RecordOutcome)   // REST: full replace

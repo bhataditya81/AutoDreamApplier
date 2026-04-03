@@ -27,15 +27,15 @@ import (
 type BrowserApplyWorker struct {
 	river.WorkerDefaults[tasks.BrowserApplyArgs]
 
-	appRepo      *repository.ApplicationRepository
+	appRepo       *repository.ApplicationRepository
 	browserClient *browser.Client
-	s3Client     *pkgs3.Client
-	buckets      S3Buckets
-	atsRegistry  *ats.Registry
-	notifier     *notification.Client
-	webhookSvc   *notification.WebhookService
-	dashboardURL string
-	log          zerolog.Logger
+	s3Client      *pkgs3.Client
+	buckets       S3Buckets
+	atsRegistry   *ats.Registry
+	notifier      *notification.Client
+	webhookSvc    *notification.WebhookService
+	dashboardURL  string
+	log           zerolog.Logger
 }
 
 // NewBrowserApplyWorker constructs a BrowserApplyWorker.

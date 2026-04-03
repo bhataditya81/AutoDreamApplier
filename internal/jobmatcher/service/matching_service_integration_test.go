@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	discmodels "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/models"
 	discrepo "github.com/bhata/AutoDreamApplier/internal/jobdiscovery/repository"
-	"github.com/bhata/AutoDreamApplier/internal/embedding"
 	matchmodels "github.com/bhata/AutoDreamApplier/internal/jobmatcher/models"
 	matchrepo "github.com/bhata/AutoDreamApplier/internal/jobmatcher/repository"
 	matchscorer "github.com/bhata/AutoDreamApplier/internal/jobmatcher/scorer"
@@ -339,14 +339,14 @@ func TestMatchingService_ApproveAndRejectMatch(t *testing.T) {
 	jobID2 := uuid.New()
 	discJobRepo := discrepo.NewJobRepository(pool)
 	job2 := &discmodels.ScrapedJob{
-		ExternalID: "rej-" + jobID2.String(),
-		Source:     discmodels.SourceIndeed,
-		Title:      "Go Engineer 2",
-		Company:    "Corp2",
-		Location:   "New York, NY",
-		IsRemote:   true,
+		ExternalID:  "rej-" + jobID2.String(),
+		Source:      discmodels.SourceIndeed,
+		Title:       "Go Engineer 2",
+		Company:     "Corp2",
+		Location:    "New York, NY",
+		IsRemote:    true,
 		Description: "Looking for Go engineers.",
-		ApplyURL:   "https://boards.greenhouse.io/corp2/jobs/2",
+		ApplyURL:    "https://boards.greenhouse.io/corp2/jobs/2",
 	}
 	job2ID, _, err := discJobRepo.Upsert(ctx, job2)
 	if err != nil {
@@ -367,7 +367,7 @@ func TestMatchingService_ApproveAndRejectMatch(t *testing.T) {
 
 	var approveID, rejectID uuid.UUID
 	pool.QueryRow(ctx, `SELECT id FROM matches WHERE user_id = $1 AND job_id = $2`, f.userID, f.jobID).Scan(&approveID) //nolint:errcheck
-	pool.QueryRow(ctx, `SELECT id FROM matches WHERE user_id = $1 AND job_id = $2`, f.userID, job2ID).Scan(&rejectID)    //nolint:errcheck
+	pool.QueryRow(ctx, `SELECT id FROM matches WHERE user_id = $1 AND job_id = $2`, f.userID, job2ID).Scan(&rejectID)   //nolint:errcheck
 
 	if err := svc.ApproveMatch(ctx, approveID, f.userID); err != nil {
 		t.Fatalf("ApproveMatch: %v", err)

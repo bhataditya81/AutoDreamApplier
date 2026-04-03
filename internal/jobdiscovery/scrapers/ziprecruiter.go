@@ -47,7 +47,7 @@ func NewZipRecruiterScraper() Scraper {
 }
 
 func (s *zipRecruiterScraper) Source() models.JobSource { return models.SourceZipRecruiter }
-func (s *zipRecruiterScraper) Name() string              { return "ZipRecruiter Scraper" }
+func (s *zipRecruiterScraper) Name() string             { return "ZipRecruiter Scraper" }
 
 // Search searches ZipRecruiter for jobs matching the given parameters.
 // Results are emitted to the returned channel as they are found.

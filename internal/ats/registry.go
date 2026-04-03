@@ -10,8 +10,8 @@ import (
 
 // ApplicationData contains all pre-prepared data needed to fill an application.
 type ApplicationData struct {
-	ResumeFilePath   string            // Local path to tailored resume PDF
-	CoverLetterText  string            // Cover letter content
+	ResumeFilePath   string // Local path to tailored resume PDF
+	CoverLetterText  string // Cover letter content
 	FullName         string
 	Email            string
 	Phone            string
@@ -23,10 +23,10 @@ type ApplicationData struct {
 
 // ApplicationResult contains the outcome of an application attempt.
 type ApplicationResult struct {
-	Success       bool
-	ScreenshotURL string // S3 key of submission screenshot
-	ErrorMessage  string
-	ATSType       string
+	Success        bool
+	ScreenshotURL  string // S3 key of submission screenshot
+	ErrorMessage   string
+	ATSType        string
 	StepsCompleted []string // Audit trail of steps completed
 }
 

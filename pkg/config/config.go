@@ -25,10 +25,10 @@ type Config struct {
 }
 
 type AppConfig struct {
-	Env          string
-	Port         string
-	LogLevel     string
-	DevJWTSecret string // dev-only: signs local JWTs, ignored in production
+	Env           string
+	Port          string
+	LogLevel      string
+	DevJWTSecret  string // dev-only: signs local JWTs, ignored in production
 	EncryptionKey string // 32-byte hex key for AES-256-GCM credential encryption
 }
 
@@ -63,7 +63,6 @@ func (c RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", c.Host, c.Port)
 }
 
-
 type AWSConfig struct {
 	Region          string
 	AccessKeyID     string
@@ -88,14 +87,14 @@ type SESConfig struct {
 }
 
 type AIConfig struct {
-	ServiceURL    string
-	Provider      string // "python", "anthropic", "gemini", "openai"
-	AnthropicKey  string
-	LLMModel      string // used as model name for Anthropic
-	GeminiAPIKey  string
-	GeminiModel   string // default: gemini-1.5-flash
-	OpenAIAPIKey  string
-	OpenAIModel   string // default: gpt-4o-mini
+	ServiceURL   string
+	Provider     string // "python", "anthropic", "gemini", "openai"
+	AnthropicKey string
+	LLMModel     string // used as model name for Anthropic
+	GeminiAPIKey string
+	GeminiModel  string // default: gemini-1.5-flash
+	OpenAIAPIKey string
+	OpenAIModel  string // default: gpt-4o-mini
 }
 
 type BrowserConfig struct {

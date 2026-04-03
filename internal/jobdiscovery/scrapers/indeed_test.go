@@ -39,9 +39,9 @@ func TestEnrichATSType(t *testing.T) {
 	s := NewIndeedScraper().(*indeedScraper)
 
 	tests := []struct {
-		name         string
-		initialURL   string
-		expectedURL  string // What we expect ApplyURL to become
+		name        string
+		initialURL  string
+		expectedURL string // What we expect ApplyURL to become
 	}{
 		{
 			name:        "Successful Redirect to ATS",

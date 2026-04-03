@@ -12,7 +12,6 @@ import (
 	"github.com/bhata/AutoDreamApplier/internal/jobmatcher/scorer"
 )
 
-
 // makeEmbServer returns a test server that always returns the provided vector.
 func makeEmbServer(t *testing.T, vec []float32) *httptest.Server {
 	t.Helper()

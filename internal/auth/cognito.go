@@ -22,11 +22,11 @@ import (
 // Claims represents the JWT claims from Cognito.
 type Claims struct {
 	jwt.RegisteredClaims
-	Sub           string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
+	Sub           string   `json:"sub"`
+	Email         string   `json:"email"`
+	EmailVerified bool     `json:"email_verified"`
 	CognitoGroups []string `json:"cognito:groups,omitempty"`
-	TokenUse      string `json:"token_use"`
+	TokenUse      string   `json:"token_use"`
 }
 
 // contextKey is a private type for context keys.
