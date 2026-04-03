@@ -59,7 +59,7 @@
 .build-rule: &build-rule
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:api-gateway:
@@ -70,7 +70,7 @@ build:api-gateway:
     PLATFORM:     linux/amd64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:job-discovery:
@@ -81,7 +81,7 @@ build:job-discovery:
     PLATFORM:     linux/amd64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:job-matcher:
@@ -92,7 +92,7 @@ build:job-matcher:
     PLATFORM:     linux/amd64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:followup-scheduler:
@@ -103,7 +103,7 @@ build:followup-scheduler:
     PLATFORM:     linux/amd64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 # ── EC2 services (arm64 — t4g.nano) ───────────────────────────────────────
@@ -116,7 +116,7 @@ build:apply-engine:
     PLATFORM:     linux/arm64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:browser-pool:
@@ -127,7 +127,7 @@ build:browser-pool:
     PLATFORM:     linux/arm64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
 
 build:ai-service:
@@ -139,5 +139,5 @@ build:ai-service:
     PLATFORM:     linux/arm64
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never

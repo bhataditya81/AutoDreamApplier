@@ -101,7 +101,7 @@ destroy:backend:
         echo "ECR images deleted."
       fi
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "destroy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "destroy"'
       when: manual
     - when: never
   environment:
@@ -133,6 +133,6 @@ destroy:frontend:
 
       echo "Vercel project removed."
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "destroy"'
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "destroy"'
       when: manual
     - when: never
