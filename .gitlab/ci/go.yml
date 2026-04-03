@@ -40,7 +40,7 @@ go:test:
   before_script:
     - apk add --no-cache bash make gcc musl-dev
   script:
-    - make test
+    - make test-backend
   cache:
     key:
       files:
