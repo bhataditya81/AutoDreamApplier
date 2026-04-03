@@ -1,0 +1,438 @@
+name: Update
+
+# Triggered automatically on every push to main.
+#
+# Flow:
+#   detect-changes   → finds which services changed via git diff
+#   build-*          → builds + pushes only changed images to ECR (parallel)
+#   update-lambda-*  → hot-updates Lambda function code (aws lambda update-function-code)
+#   update-ec2       → SSH to EC2, pull new images, restart services
+#   update-frontend  → Vercel deploy with live NEXT_PUBLIC_API_URL
+#
+# If infra/terraform/ changed, a warning is printed but Terraform is NOT
+# applied automatically. Run the DEPLOY pipeline for that.
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPO_PREFIX: autodreamapplier
+  PROJECT_NAME: autodream
+
+permissions:
+  contents: read
+
+jobs:
+# ── Stage 1: Detect changed services ─────────────────────────────────────
+
+  detect-changes:
+    name: detect:changes
+    runs-on: ubuntu-latest
+    outputs:
+      api_gateway:        ${{ steps.detect.outputs.BUILD_API_GATEWAY }}
+      job_discovery:      ${{ steps.detect.outputs.BUILD_JOB_DISCOVERY }}
+      job_matcher:        ${{ steps.detect.outputs.BUILD_JOB_MATCHER }}
+      followup_scheduler: ${{ steps.detect.outputs.BUILD_FOLLOWUP_SCHEDULER }}
+      apply_engine:       ${{ steps.detect.outputs.BUILD_APPLY_ENGINE }}
+      browser_pool:       ${{ steps.detect.outputs.BUILD_BROWSER_POOL }}
+      ai_service:         ${{ steps.detect.outputs.BUILD_AI_SERVICE }}
+      frontend:           ${{ steps.detect.outputs.BUILD_FRONTEND }}
+      infra_changed:      ${{ steps.detect.outputs.INFRA_CHANGED }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2        # need HEAD and HEAD~1 for diff
+      - id: detect
+        run: |
+          BEFORE="${{ github.event.before }}"
+          ZERO="0000000000000000000000000000000000000000"
+
+          changed_in() {
+            for prefix in "$@"; do
+              echo "$CHANGED" | grep -qE "^${prefix}" && return 0
+            done
+            return 1
+          }
+
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ]; then
+            echo "First push to main — all services marked changed."
+            echo "BUILD_API_GATEWAY=true"         >> $GITHUB_OUTPUT
+            echo "BUILD_JOB_DISCOVERY=true"       >> $GITHUB_OUTPUT
+            echo "BUILD_JOB_MATCHER=true"         >> $GITHUB_OUTPUT
+            echo "BUILD_FOLLOWUP_SCHEDULER=true"  >> $GITHUB_OUTPUT
+            echo "BUILD_APPLY_ENGINE=true"        >> $GITHUB_OUTPUT
+            echo "BUILD_BROWSER_POOL=true"        >> $GITHUB_OUTPUT
+            echo "BUILD_AI_SERVICE=true"          >> $GITHUB_OUTPUT
+            echo "BUILD_FRONTEND=true"            >> $GITHUB_OUTPUT
+            echo "INFRA_CHANGED=false"            >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "${BEFORE}" "${{ github.sha }}" 2>/dev/null || \
+                    git diff --name-only HEAD~1 HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Shared Go — touching these rebuilds all Go services
+          GO_COMMON="internal/ pkg/ go\.mod go\.sum"
+
+          changed_in $GO_COMMON "cmd/api-gateway/" "deployments/lambda/api-gateway/" \
+            && echo "BUILD_API_GATEWAY=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_API_GATEWAY=false" >> $GITHUB_OUTPUT
+
+          changed_in $GO_COMMON "cmd/job-discovery/" "deployments/lambda/job-discovery/" \
+            && echo "BUILD_JOB_DISCOVERY=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_JOB_DISCOVERY=false" >> $GITHUB_OUTPUT
+
+          changed_in $GO_COMMON "cmd/job-matcher/" "deployments/lambda/job-matcher/" \
+            && echo "BUILD_JOB_MATCHER=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_JOB_MATCHER=false" >> $GITHUB_OUTPUT
+
+          changed_in $GO_COMMON "cmd/followup-scheduler/" "deployments/lambda/followup-scheduler/" \
+            && echo "BUILD_FOLLOWUP_SCHEDULER=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_FOLLOWUP_SCHEDULER=false" >> $GITHUB_OUTPUT
+
+          changed_in $GO_COMMON "cmd/apply-engine/" "deployments/ec2/apply-engine/" \
+            && echo "BUILD_APPLY_ENGINE=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_APPLY_ENGINE=false" >> $GITHUB_OUTPUT
+
+          changed_in "deployments/ec2/browser-pool/" \
+            && echo "BUILD_BROWSER_POOL=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_BROWSER_POOL=false" >> $GITHUB_OUTPUT
+
+          changed_in "ai-service/" \
+            && echo "BUILD_AI_SERVICE=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_AI_SERVICE=false" >> $GITHUB_OUTPUT
+
+          changed_in "frontend/" \
+            && echo "BUILD_FRONTEND=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_FRONTEND=false" >> $GITHUB_OUTPUT
+
+          if changed_in "infra/terraform/"; then
+            echo "INFRA_CHANGED=true" >> $GITHUB_OUTPUT
+            echo ""
+            echo "WARNING: infra/terraform/ was modified."
+            echo "  Terraform changes are NOT applied automatically by the update pipeline."
+            echo "  Trigger the DEPLOY workflow manually to apply them."
+          else
+            echo "INFRA_CHANGED=false" >> $GITHUB_OUTPUT
+          fi
+
+# ── Stage 2: Build only changed services (parallel) ──────────────────────
+
+  build-api-gateway:
+    name: build:api-gateway
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.api_gateway == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/api-gateway"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/api-gateway/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-job-discovery:
+    name: build:job-discovery
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.job_discovery == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/job-discovery"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/job-discovery/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-job-matcher:
+    name: build:job-matcher
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.job_matcher == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/job-matcher"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/job-matcher/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-followup-scheduler:
+    name: build:followup-scheduler
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.followup_scheduler == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/followup-scheduler"
+          docker build --platform linux/amd64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/lambda/followup-scheduler/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-apply-engine:
+    name: build:apply-engine
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.apply_engine == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/apply-engine"
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/ec2/apply-engine/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-browser-pool:
+    name: build:browser-pool
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.browser_pool == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/browser-pool"
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "${REPO}:latest" \
+            -f deployments/ec2/browser-pool/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+  build-ai-service:
+    name: build:ai-service
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.ai_service == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          REPO="${ECR}/${ECR_REPO_PREFIX}/ai-service"
+          DEPS="${REPO}:deps"
+          # Use pre-built deps layer if it exists; fall back to base image
+          docker pull "${DEPS}" 2>/dev/null || true
+          docker build --platform linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --build-arg BASE_IMAGE="${DEPS}" \
+            --cache-from "${REPO}:latest" \
+            -f ai-service/Dockerfile \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" \
+            ai-service
+          docker push "${REPO}:${GITHUB_SHA}"
+          docker push "${REPO}:latest"
+        env:
+          DOCKER_BUILDKIT: "1"
+
+# ── Stage 3a: Hot-update Lambda functions ────────────────────────────────
+
+  update-lambda-api-gateway:
+    name: update:lambda:api-gateway
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-api-gateway]
+    if: ${{ always() && needs.detect-changes.outputs.api_gateway == 'true' && needs.build-api-gateway.result == 'success' }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/api-gateway:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-api-gateway" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-api-gateway"
+          echo "Lambda ${PROJECT_NAME}-api-gateway updated."
+
+  update-lambda-job-discovery:
+    name: update:lambda:job-discovery
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-job-discovery]
+    if: ${{ always() && needs.detect-changes.outputs.job_discovery == 'true' && needs.build-job-discovery.result == 'success' }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-discovery:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-discovery" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-discovery"
+          echo "Lambda ${PROJECT_NAME}-job-discovery updated."
+
+  update-lambda-job-matcher:
+    name: update:lambda:job-matcher
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-job-matcher]
+    if: ${{ always() && needs.detect-changes.outputs.job_matcher == 'true' && needs.build-job-matcher.result == 'success' }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-matcher:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-matcher" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-matcher"
+          echo "Lambda ${PROJECT_NAME}-job-matcher updated."
+
+  update-lambda-followup-scheduler:
+    name: update:lambda:followup-scheduler
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-followup-scheduler]
+    if: ${{ always() && needs.detect-changes.outputs.followup_scheduler == 'true' && needs.build-followup-scheduler.result == 'success' }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/followup-scheduler:${GITHUB_SHA}"
+          aws lambda update-function-code --function-name "${PROJECT_NAME}-followup-scheduler" --image-uri "$URI"
+          aws lambda wait function-updated --function-name "${PROJECT_NAME}-followup-scheduler"
+          echo "Lambda ${PROJECT_NAME}-followup-scheduler updated."
+
+# ── Stage 3b: Hot-update EC2 via SSH ──────────────────────────────────────
+
+  update-ec2:
+    name: update:ec2
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - build-apply-engine
+      - build-browser-pool
+      - build-ai-service
+    if: |
+      always() &&
+      (needs.detect-changes.outputs.apply_engine == 'true' ||
+       needs.detect-changes.outputs.browser_pool == 'true' ||
+       needs.detect-changes.outputs.ai_service == 'true') &&
+      (needs.build-apply-engine.result == 'success' || needs.build-apply-engine.result == 'skipped') &&
+      (needs.build-browser-pool.result == 'success' || needs.build-browser-pool.result == 'skipped') &&
+      (needs.build-ai-service.result == 'success' || needs.build-ai-service.result == 'skipped')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: bash .gitlab/scripts/update-ec2.sh
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          BUILD_APPLY_ENGINE:  ${{ needs.detect-changes.outputs.apply_engine }}
+          BUILD_BROWSER_POOL:  ${{ needs.detect-changes.outputs.browser_pool }}
+          BUILD_AI_SERVICE:    ${{ needs.detect-changes.outputs.ai_service }}
+          CI_COMMIT_SHA:       ${{ github.sha }}
+
+# ── Stage 3c: Vercel frontend deploy ──────────────────────────────────────
+
+  update-frontend:
+    name: update:frontend
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: bash .gitlab/scripts/deploy-frontend.sh
+        env:
+          BUILD_FRONTEND:    "true"
+          VERCEL_TOKEN:      ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
