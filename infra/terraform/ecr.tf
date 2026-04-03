@@ -4,6 +4,38 @@ locals {
   all_services    = concat(local.lambda_services, local.ec2_services)
 }
 
+# Import pre-existing ECR repositories into Terraform state.
+# These were created outside of Terraform (or before state was migrated to S3).
+# Safe to remove these import blocks after the first successful apply.
+import {
+  to = aws_ecr_repository.services["api-gateway"]
+  id = "autodream/api-gateway"
+}
+import {
+  to = aws_ecr_repository.services["job-discovery"]
+  id = "autodream/job-discovery"
+}
+import {
+  to = aws_ecr_repository.services["job-matcher"]
+  id = "autodream/job-matcher"
+}
+import {
+  to = aws_ecr_repository.services["followup-scheduler"]
+  id = "autodream/followup-scheduler"
+}
+import {
+  to = aws_ecr_repository.services["apply-engine"]
+  id = "autodream/apply-engine"
+}
+import {
+  to = aws_ecr_repository.services["browser-pool"]
+  id = "autodream/browser-pool"
+}
+import {
+  to = aws_ecr_repository.services["ai-service"]
+  id = "autodream/ai-service"
+}
+
 resource "aws_ecr_repository" "services" {
   for_each = toset(local.all_services)
 
