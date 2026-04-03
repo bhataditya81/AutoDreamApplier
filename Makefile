@@ -1,4 +1,4 @@
-.PHONY: help dev test test-backend test-frontend lint build clean migrate docker-up docker-down ci
+.PHONY: help dev test test-backend test-frontend lint build clean migrate docker-up docker-down ci hooks
 
 # Default target
 help:
@@ -64,4 +64,9 @@ migrate:
 # ── CI (mirrors GitHub Actions locally) ───────────────────────────────────────
 
 ci: lint test-backend test-frontend build
+
+hooks:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-commit
+	@echo "Pre-commit hook installed."
 	@echo "✅ All CI checks passed"
