@@ -6,13 +6,18 @@ output "api_endpoint" {
 output "setup_commands" {
   description = "Post-deployment setup commands"
   value       = <<-EOT
+    # Fetch SSH key from Secrets Manager:
+    aws secretsmanager get-secret-value \
+        --secret-id /${var.project_name}/ec2_ssh_private_key \
+        --query SecretString --output text > /tmp/autodream.pem && chmod 600 /tmp/autodream.pem
+
     # 1. Copy docker-compose.yml to EC2
-    scp -i ~/.ssh/${var.ec2_key_pair_name}.pem \
+    scp -i /tmp/autodream.pem \
         deployments/ec2/docker-compose.yml \
         ec2-user@${aws_eip.browser_pool.public_ip}:/opt/autodream/docker-compose.yml
 
     # 2. Start services on EC2
-    ssh -i ~/.ssh/${var.ec2_key_pair_name}.pem ec2-user@${aws_eip.browser_pool.public_ip} \
+    ssh -i /tmp/autodream.pem ec2-user@${aws_eip.browser_pool.public_ip} \
         "sudo systemctl start autodream"
 
     # 3. Set NEXT_PUBLIC_API_URL in Vercel:

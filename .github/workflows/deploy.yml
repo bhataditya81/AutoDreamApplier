@@ -74,8 +74,7 @@ jobs:
       TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
       TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
       TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
-      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
-      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
       TF_VAR_ai_provider: gemini
       TF_VAR_llm_model: gemini-1.5-flash
       TF_VAR_app_env: staging
@@ -108,8 +107,7 @@ jobs:
       TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
       TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
       TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
-      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
-      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
       TF_VAR_ai_provider: gemini
       TF_VAR_llm_model: gemini-1.5-flash
       TF_VAR_app_env: staging
@@ -357,8 +355,7 @@ jobs:
       TF_VAR_dev_jwt_secret: ${{ secrets.TF_VAR_DEV_JWT_SECRET }}
       TF_VAR_encryption_key: ${{ secrets.TF_VAR_ENCRYPTION_KEY }}
       TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
-      TF_VAR_ec2_key_pair_name: ${{ secrets.TF_VAR_EC2_KEY_PAIR_NAME }}
-      TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
+TF_VAR_admin_ssh_cidr: ${{ secrets.TF_VAR_ADMIN_SSH_CIDR }}
       TF_VAR_ai_provider: gemini
       TF_VAR_llm_model: gemini-1.5-flash
       TF_VAR_app_env: staging
@@ -460,8 +457,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - run: bash .gitlab/scripts/deploy-ec2.sh
-        env:
-          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
 
   deploy-frontend:
     name: deploy:frontend

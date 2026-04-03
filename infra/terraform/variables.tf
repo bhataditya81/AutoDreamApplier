@@ -148,11 +148,6 @@ variable "frontend_cors_origins" {
 
 # --- EC2 ---
 
-variable "ec2_key_pair_name" {
-  description = "Name of existing EC2 key pair for SSH access"
-  type        = string
-}
-
 variable "admin_ssh_cidr" {
   description = "Your IP in CIDR notation for SSH access (e.g. 1.2.3.4/32)"
   type        = string

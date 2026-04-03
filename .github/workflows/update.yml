@@ -408,7 +408,6 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - run: bash .gitlab/scripts/update-ec2.sh
         env:
-          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           BUILD_APPLY_ENGINE:  ${{ needs.detect-changes.outputs.apply_engine }}
           BUILD_BROWSER_POOL:  ${{ needs.detect-changes.outputs.browser_pool }}
           BUILD_AI_SERVICE:    ${{ needs.detect-changes.outputs.ai_service }}

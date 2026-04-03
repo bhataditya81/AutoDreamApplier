@@ -1,3 +1,26 @@
+# ── SSH Key Pair (auto-generated, private key stored in Secrets Manager) ───
+
+resource "tls_private_key" "ec2" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "ec2" {
+  key_name   = "${var.project_name}-ec2"
+  public_key = tls_private_key.ec2.public_key_openssh
+}
+
+resource "aws_secretsmanager_secret" "ec2_ssh_key" {
+  name                    = "/${var.project_name}/ec2_ssh_private_key"
+  description             = "EC2 SSH private key (RSA) — used by CI/CD pipelines"
+  recovery_window_in_days = 0 # allow immediate deletion on destroy
+}
+
+resource "aws_secretsmanager_secret_version" "ec2_ssh_key" {
+  secret_id     = aws_secretsmanager_secret.ec2_ssh_key.id
+  secret_string = tls_private_key.ec2.private_key_pem
+}
+
 # ── Data sources ───────────────────────────────────────────────────────────
 
 # Latest Amazon Linux 2023 ARM64 AMI
@@ -73,7 +96,7 @@ resource "aws_security_group" "browser_pool_ec2" {
 resource "aws_instance" "browser_pool" {
   ami                    = data.aws_ami.amazon_linux_2023_arm64.id
   instance_type          = "t4g.nano"
-  key_name               = var.ec2_key_pair_name
+  key_name               = aws_key_pair.ec2.key_name
   vpc_security_group_ids = [aws_security_group.browser_pool_ec2.id]
   subnet_id              = tolist(data.aws_subnets.default_public.ids)[0]
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
@@ -112,5 +135,10 @@ output "ec2_public_ip" {
 
 output "ec2_ssh_command" {
   description = "SSH command to access the EC2 instance"
-  value       = "ssh -i ~/.ssh/${var.ec2_key_pair_name}.pem ec2-user@${aws_eip.browser_pool.public_ip}"
+  value       = "ssh -i <(aws secretsmanager get-secret-value --secret-id /${var.project_name}/ec2_ssh_private_key --query SecretString --output text) ec2-user@${aws_eip.browser_pool.public_ip}"
+}
+
+output "ec2_ssh_secret_name" {
+  description = "Secrets Manager secret name holding the EC2 private key"
+  value       = aws_secretsmanager_secret.ec2_ssh_key.name
 }

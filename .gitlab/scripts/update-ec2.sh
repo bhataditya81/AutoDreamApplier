@@ -13,9 +13,11 @@ if [ "$ANY_EC2" != "true" ]; then
   exit 0
 fi
 
-# SSH key from masked CI variable
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
-printf '%s\n' "${EC2_SSH_PRIVATE_KEY}" > ~/.ssh/autodream.pem
+aws secretsmanager get-secret-value \
+  --secret-id "/autodream/ec2_ssh_private_key" \
+  --query 'SecretString' --output text \
+  --region "${AWS_REGION}" > ~/.ssh/autodream.pem
 chmod 600 ~/.ssh/autodream.pem
 
 # Fetch EC2 IP from SSM (stored by Terraform)
