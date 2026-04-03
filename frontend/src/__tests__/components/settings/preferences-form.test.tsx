@@ -27,14 +27,6 @@ function mockGetPrefs(prefs = mockPrefs) {
   } as Response);
 }
 
-function mockSavePrefs() {
-  return jest.spyOn(global, 'fetch').mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => mockPrefs,
-  } as Response);
-}
-
 afterEach(() => jest.restoreAllMocks());
 
 describe('PreferencesForm', () => {

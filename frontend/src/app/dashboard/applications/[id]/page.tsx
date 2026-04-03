@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -33,7 +33,6 @@ const TERMINAL_STATUSES = new Set<ApplicationStatus>([
 
 export default function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
 
   const [app, setApp] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);

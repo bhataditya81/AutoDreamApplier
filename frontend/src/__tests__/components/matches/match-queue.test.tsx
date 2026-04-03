@@ -8,12 +8,14 @@ jest.mock('@/lib/auth', () => ({ getToken: jest.fn(() => 'test-token') }));
 // Radix Slot passes children as [false, element] when Button has a loading guard
 // before children; React.Children.count sees 2 and throws in jsdom. Use a simple
 // passthrough so asChild renders correctly in tests.
+const SlotMock = React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
+  const child = React.Children.toArray(children)[0];
+  if (!React.isValidElement(child)) return null;
+  return React.cloneElement(child as React.ReactElement, { ...props, ref });
+});
+SlotMock.displayName = 'Slot';
 jest.mock('@radix-ui/react-slot', () => ({
-  Slot: React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
-    const child = React.Children.toArray(children)[0];
-    if (!React.isValidElement(child)) return null;
-    return React.cloneElement(child as React.ReactElement, { ...props, ref });
-  }),
+  Slot: SlotMock,
 }));
 
 const mockMatch = {
