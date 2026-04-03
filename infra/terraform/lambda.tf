@@ -5,7 +5,7 @@ locals {
     REDIS_URL    = var.redis_url
 
     # App
-    APP_ENV       = var.app_env
+    APP_ENV        = var.app_env
     DEV_JWT_SECRET = var.dev_jwt_secret   # used when APP_ENV != production
     ENCRYPTION_KEY = var.encryption_key
 
@@ -33,6 +33,11 @@ locals {
     # Browser pool — auto-derived from the Elastic IP Terraform manages
     BROWSER_POOL_URL = "http://${aws_eip.browser_pool.public_ip}:9222"
   }
+
+  # Placeholder image used only on first apply when ECR repos are empty.
+  # CI/CD owns image updates via `aws lambda update-function-code` after each build.
+  # Terraform never modifies image_uri after initial creation (ignore_changes below).
+  lambda_placeholder_image = "public.ecr.aws/lambda/provided:al2023"
 }
 
 # ── API Gateway Lambda ─────────────────────────────────────────────────────
@@ -41,13 +46,17 @@ resource "aws_lambda_function" "api_gateway" {
   function_name = "${var.project_name}-api-gateway"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.services["api-gateway"].repository_url}:latest"
+  image_uri     = local.lambda_placeholder_image
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 30
 
   environment {
     variables = local.lambda_env_vars
+  }
+
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
@@ -62,7 +71,7 @@ resource "aws_lambda_function" "job_discovery" {
   function_name = "${var.project_name}-job-discovery"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.services["job-discovery"].repository_url}:latest"
+  image_uri     = local.lambda_placeholder_image
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 840 # 14 minutes — scraping can take a while
@@ -71,6 +80,10 @@ resource "aws_lambda_function" "job_discovery" {
     variables = merge(local.lambda_env_vars, {
       LINKEDIN_PROXY_URL = var.linkedin_proxy_url
     })
+  }
+
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
@@ -85,13 +98,17 @@ resource "aws_lambda_function" "job_matcher" {
   function_name = "${var.project_name}-job-matcher"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.services["job-matcher"].repository_url}:latest"
+  image_uri     = local.lambda_placeholder_image
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 300 # 5 minutes
 
   environment {
     variables = local.lambda_env_vars
+  }
+
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
@@ -106,13 +123,17 @@ resource "aws_lambda_function" "followup_scheduler" {
   function_name = "${var.project_name}-followup-scheduler"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.services["followup-scheduler"].repository_url}:latest"
+  image_uri     = local.lambda_placeholder_image
   architectures = ["x86_64"]
   memory_size   = 128
   timeout       = 120
 
   environment {
     variables = local.lambda_env_vars
+  }
+
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
