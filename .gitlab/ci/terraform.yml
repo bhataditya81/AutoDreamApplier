@@ -31,7 +31,14 @@ terraform:plan:
   stage: infra
   script:
     - terraform validate
-    - terraform plan -out=tfplan -detailed-exitcode
+    - |
+      set +e
+      terraform plan -out=tfplan -detailed-exitcode
+      PLAN_EXIT=$?
+      set -e
+      # exit 0 = no changes, exit 2 = changes pending (both are success)
+      # exit 1 = real terraform error (fail the job)
+      [ $PLAN_EXIT -eq 1 ] && exit 1 || exit 0
   artifacts:
     name: "tfplan-${CI_COMMIT_SHA}"
     paths:
