@@ -4,6 +4,12 @@
 # Uses GitLab's built-in HTTP Terraform state backend.
 # State is stored per-project at:
 #   ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production
+#
+# Deploy pipeline flow:
+#   1. terraform:plan        — show all planned changes
+#   2. terraform:apply:ecr   — manual gate; creates ECR repos only
+#   3. build:* jobs          — push real images to ECR (parallel)
+#   4. terraform:apply:full  — creates Lambda + all remaining infra
 # ============================================================
 
 .terraform-base:
@@ -15,8 +21,6 @@
     TF_INPUT:         "false"
     # TF_HTTP_* vars are read by the HTTP backend on every operation
     # (plan, apply, lock, unlock) — not just at init time.
-    # This is the correct way to pass credentials in CI so that
-    # each job uses its own CI_JOB_TOKEN for state locking.
     TF_HTTP_ADDRESS:        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production"
     TF_HTTP_LOCK_ADDRESS:   "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock"
     TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock"
@@ -29,7 +33,7 @@
     - cd "${TF_ROOT}"
     - terraform init
 
-# ── Plan — runs automatically before every deploy ─────────────────────────
+# ── Plan — runs automatically, shows everything that will change ──────────
 
 terraform:plan:
   extends: .terraform-base
@@ -38,40 +42,58 @@ terraform:plan:
     - terraform validate
     - |
       set +e
-      terraform plan -out=tfplan -detailed-exitcode
+      terraform plan -detailed-exitcode
       PLAN_EXIT=$?
       set -e
       # exit 0 = no changes, exit 2 = changes pending (both are success)
-      # exit 1 = real terraform error (fail the job)
+      # exit 1 = real terraform error
       [ $PLAN_EXIT -eq 1 ] && exit 1 || exit 0
-  artifacts:
-    name: "tfplan-${CI_COMMIT_SHA}"
-    paths:
-      - "${TF_ROOT}/tfplan"
-    expire_in: 1 hour
   rules:
     - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
 
-# ── Apply — manual gate after plan ────────────────────────────────────────
+# ── Apply ECR only — manual gate; build jobs depend on this ──────────────
+# Creates only ECR repositories so Docker builds can push images.
+# Uses -target so Lambda functions (which need images) are skipped.
 
-terraform:apply:
+terraform:apply:ecr:
   extends: .terraform-base
   stage: infra
   needs: ["terraform:plan"]
   when: manual
-  allow_failure: false   # blocks the pipeline — build stage waits for apply
+  allow_failure: false
   script:
-    - terraform apply -auto-approve tfplan
     - |
-      # Extract outputs and store in SSM (already done by Terraform resources)
-      # Export for downstream jobs in this pipeline
+      terraform apply -auto-approve \
+        -target=aws_ecr_repository.services \
+        -target=aws_ecr_lifecycle_policy.services
+      echo "ECR repos ready."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
+
+# ── Apply full — runs after builds push images to ECR ────────────────────
+# Creates all remaining resources: Lambda, EC2, S3, IAM, API Gateway, etc.
+# Lambda image_uri has ignore_changes so it uses whatever image CI/CD pushes.
+
+terraform:apply:full:
+  extends: .terraform-base
+  stage: infra2
+  needs:
+    - "deploy:build:api-gateway"
+    - "deploy:build:job-discovery"
+    - "deploy:build:job-matcher"
+    - "deploy:build:followup-scheduler"
+    - "deploy:build:apply-engine"
+    - "deploy:build:browser-pool"
+    - "deploy:build:ai-service"
+  script:
+    - terraform apply -auto-approve
+    - |
       EC2_IP=$(terraform output -raw ec2_public_ip)
       API_URL=$(terraform output -raw api_endpoint)
       echo "EC2_PUBLIC_IP=${EC2_IP}" >> "${CI_PROJECT_DIR}/${TF_ROOT}/deploy.env"
       echo "API_ENDPOINT=${API_URL}" >> "${CI_PROJECT_DIR}/${TF_ROOT}/deploy.env"
-      echo "Terraform apply complete."
-      echo "  EC2 IP       : ${EC2_IP}"
-      echo "  API endpoint : ${API_URL}"
+      echo "EC2 IP:       ${EC2_IP}"
+      echo "API endpoint: ${API_URL}"
   artifacts:
     reports:
       dotenv: "${TF_ROOT}/deploy.env"

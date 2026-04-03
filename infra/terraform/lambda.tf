@@ -34,10 +34,6 @@ locals {
     BROWSER_POOL_URL = "http://${aws_eip.browser_pool.public_ip}:9222"
   }
 
-  # Placeholder image used only on first apply when ECR repos are empty.
-  # CI/CD owns image updates via `aws lambda update-function-code` after each build.
-  # Terraform never modifies image_uri after initial creation (ignore_changes below).
-  lambda_placeholder_image = "public.ecr.aws/lambda/provided:al2023"
 }
 
 # ── API Gateway Lambda ─────────────────────────────────────────────────────
@@ -46,7 +42,7 @@ resource "aws_lambda_function" "api_gateway" {
   function_name = "${var.project_name}-api-gateway"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = local.lambda_placeholder_image
+  image_uri     = "${aws_ecr_repository.services["api-gateway"].repository_url}:latest"
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 30
@@ -71,7 +67,7 @@ resource "aws_lambda_function" "job_discovery" {
   function_name = "${var.project_name}-job-discovery"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = local.lambda_placeholder_image
+  image_uri     = "${aws_ecr_repository.services["job-discovery"].repository_url}:latest"
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 840 # 14 minutes — scraping can take a while
@@ -98,7 +94,7 @@ resource "aws_lambda_function" "job_matcher" {
   function_name = "${var.project_name}-job-matcher"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = local.lambda_placeholder_image
+  image_uri     = "${aws_ecr_repository.services["job-matcher"].repository_url}:latest"
   architectures = ["x86_64"]
   memory_size   = 256
   timeout       = 300 # 5 minutes
@@ -123,7 +119,7 @@ resource "aws_lambda_function" "followup_scheduler" {
   function_name = "${var.project_name}-followup-scheduler"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = local.lambda_placeholder_image
+  image_uri     = "${aws_ecr_repository.services["followup-scheduler"].repository_url}:latest"
   architectures = ["x86_64"]
   memory_size   = 128
   timeout       = 120

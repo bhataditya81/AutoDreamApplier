@@ -23,31 +23,31 @@
 
 deploy:build:api-gateway:
   extends: build:api-gateway
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:job-discovery:
   extends: build:job-discovery
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:job-matcher:
   extends: build:job-matcher
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:followup-scheduler:
   extends: build:followup-scheduler
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:apply-engine:
   extends: build:apply-engine
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:browser-pool:
   extends: build:browser-pool
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 deploy:build:ai-service:
   extends: build:ai-service
-  needs: ["terraform:apply"]
+  needs: ["terraform:apply:ecr"]
 
 # ── Stage 5: Update all Lambda functions ──────────────────────────────────
 
@@ -60,7 +60,7 @@ deploy:build:ai-service:
 
 deploy:lambda:api-gateway:
   extends: .deploy-lambda
-  needs: ["deploy:build:api-gateway"]
+  needs: ["deploy:build:api-gateway", "terraform:apply:full"]
   variables:
     SERVICE_NAME: api-gateway
   script:
@@ -74,7 +74,7 @@ deploy:lambda:api-gateway:
 
 deploy:lambda:job-discovery:
   extends: .deploy-lambda
-  needs: ["deploy:build:job-discovery"]
+  needs: ["deploy:build:job-discovery", "terraform:apply:full"]
   variables:
     SERVICE_NAME: job-discovery
   script:
@@ -88,7 +88,7 @@ deploy:lambda:job-discovery:
 
 deploy:lambda:job-matcher:
   extends: .deploy-lambda
-  needs: ["deploy:build:job-matcher"]
+  needs: ["deploy:build:job-matcher", "terraform:apply:full"]
   variables:
     SERVICE_NAME: job-matcher
   script:
@@ -102,7 +102,7 @@ deploy:lambda:job-matcher:
 
 deploy:lambda:followup-scheduler:
   extends: .deploy-lambda
-  needs: ["deploy:build:followup-scheduler"]
+  needs: ["deploy:build:followup-scheduler", "terraform:apply:full"]
   variables:
     SERVICE_NAME: followup-scheduler
   script:
@@ -120,7 +120,7 @@ deploy:ec2:
   stage: deploy
   image: alpine:3.19
   needs:
-    - "terraform:apply"
+    - "terraform:apply:full"
     - "deploy:build:apply-engine"
     - "deploy:build:browser-pool"
     - "deploy:build:ai-service"
@@ -137,7 +137,7 @@ deploy:frontend:
   stage: deploy
   image: node:20-alpine
   needs:
-    - "terraform:apply"
+    - "terraform:apply:full"
   rules:
     - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "deploy"'
     - when: never
