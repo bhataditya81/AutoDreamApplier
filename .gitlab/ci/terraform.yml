@@ -13,18 +13,21 @@
   variables:
     TF_IN_AUTOMATION: "true"
     TF_INPUT:         "false"
+    # TF_HTTP_* vars are read by the HTTP backend on every operation
+    # (plan, apply, lock, unlock) — not just at init time.
+    # This is the correct way to pass credentials in CI so that
+    # each job uses its own CI_JOB_TOKEN for state locking.
+    TF_HTTP_ADDRESS:        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production"
+    TF_HTTP_LOCK_ADDRESS:   "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock"
+    TF_HTTP_USERNAME:       "gitlab-ci-token"
+    TF_HTTP_PASSWORD:       "${CI_JOB_TOKEN}"
+    TF_HTTP_LOCK_METHOD:    "POST"
+    TF_HTTP_UNLOCK_METHOD:  "DELETE"
+    TF_HTTP_RETRY_WAIT_MIN: "5"
   before_script:
     - cd "${TF_ROOT}"
-    - |
-      terraform init \
-        -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production" \
-        -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock" \
-        -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock" \
-        -backend-config="username=gitlab-ci-token" \
-        -backend-config="password=${CI_JOB_TOKEN}" \
-        -backend-config="lock_method=POST" \
-        -backend-config="unlock_method=DELETE" \
-        -backend-config="retry_wait_min=5"
+    - terraform init
 
 # ── Plan — runs automatically before every deploy ─────────────────────────
 
@@ -64,8 +67,8 @@ terraform:apply:
       # Export for downstream jobs in this pipeline
       EC2_IP=$(terraform output -raw ec2_public_ip)
       API_URL=$(terraform output -raw api_endpoint)
-      echo "EC2_PUBLIC_IP=${EC2_IP}" >> deploy.env
-      echo "API_ENDPOINT=${API_URL}" >> deploy.env
+      echo "EC2_PUBLIC_IP=${EC2_IP}" >> "${CI_PROJECT_DIR}/${TF_ROOT}/deploy.env"
+      echo "API_ENDPOINT=${API_URL}" >> "${CI_PROJECT_DIR}/${TF_ROOT}/deploy.env"
       echo "Terraform apply complete."
       echo "  EC2 IP       : ${EC2_IP}"
       echo "  API endpoint : ${API_URL}"
