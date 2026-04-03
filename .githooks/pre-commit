@@ -71,20 +71,19 @@ fi
 STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
 
 if [ -n "$STAGED_PY" ]; then
-  if command -v ruff &>/dev/null; then
-    if echo "$STAGED_PY" | xargs ruff check 2>&1; then
+  RUFF=""
+  if command -v ruff &>/dev/null; then RUFF="ruff"
+  elif python3 -m ruff --version &>/dev/null 2>&1; then RUFF="python3 -m ruff"
+  fi
+
+  if [ -n "$RUFF" ]; then
+    if echo "$STAGED_PY" | xargs $RUFF check 2>&1; then
       ok "py:lint (ruff)"
     else
       fail "py:lint — fix ruff errors above"
     fi
-  elif command -v flake8 &>/dev/null; then
-    if echo "$STAGED_PY" | xargs flake8 2>&1; then
-      ok "py:lint (flake8)"
-    else
-      fail "py:lint — fix flake8 errors above"
-    fi
   else
-    skip "py:lint (ruff/flake8 not installed)"
+    skip "py:lint (ruff not installed — run: pip install ruff)"
   fi
 else
   skip "py:lint (no Python files staged)"

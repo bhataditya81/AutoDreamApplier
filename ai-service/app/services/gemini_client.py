@@ -25,7 +25,7 @@ def complete(prompt: str, max_tokens: int = 2048, system: str = "") -> str:
                 generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
             )
             return response.text
-        except Exception as e:
+        except Exception:
             if attempt == 2:
                 raise
             time.sleep(2 ** attempt)

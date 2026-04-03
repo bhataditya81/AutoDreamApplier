@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from app.models import FormQARequest, FormQAResponse
 from app.services import llm, prompt_builder
 
