@@ -141,6 +141,7 @@ authTest.describe('Analytics page', () => {
 
   authTest('clicking "180 days" updates URL param to range=180', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/analytics');
+    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: /180d/i }).click();
     await expect(page).toHaveURL(/[?&]range=180/);
   });

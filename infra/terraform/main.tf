@@ -8,12 +8,11 @@ terraform {
     }
   }
 
-  # Uncomment and configure for remote state (S3 backend)
-  # backend "s3" {
-  #   bucket = "autodream-terraform-state"
-  #   key    = "infra/terraform.tfstate"
-  #   region = "us-east-1"
-  # }
+  # GitLab-managed HTTP state backend.
+  # In CI the init flags are injected by .gitlab/ci/terraform.yml.
+  # For local dev, pass -backend-config flags or set TF_HTTP_* env vars.
+  # See: https://docs.gitlab.com/ee/user/infrastructure/iac/terraform_state.html
+  backend "http" {}
 }
 
 provider "aws" {

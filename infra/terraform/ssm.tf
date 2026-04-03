@@ -67,3 +67,21 @@ resource "aws_ssm_parameter" "image_tag" {
     ignore_changes = [value] # Managed by CI/CD
   }
 }
+
+# ── CI/CD discovery parameters (written by Terraform, read by update pipeline) ─
+
+resource "aws_ssm_parameter" "ec2_public_ip" {
+  name  = "/autodream/ec2_public_ip"
+  type  = "String"
+  value = aws_eip.browser_pool.public_ip
+
+  lifecycle {
+    ignore_changes = [] # Always updated by Terraform
+  }
+}
+
+resource "aws_ssm_parameter" "api_endpoint" {
+  name  = "/autodream/api_endpoint"
+  type  = "String"
+  value = aws_apigatewayv2_stage.default.invoke_url
+}

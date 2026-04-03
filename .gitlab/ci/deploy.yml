@@ -1,0 +1,186 @@
+# ============================================================
+# DEPLOY PIPELINE
+# Triggered manually: CI/CD → Run pipeline → PIPELINE_TYPE=deploy
+#
+# Flow:
+#   1. validate + test    (go:test, py:lint, web:lint — inherited)
+#   2. terraform:plan     (show what will change)
+#   3. terraform:apply    (manual gate — review plan first)
+#   4. build all images   (parallel, all 7 services)
+#   5. deploy:lambda:all  (update all 4 Lambda functions)
+#   6. deploy:ec2         (full EC2 stack restart)
+#   7. deploy:frontend    (Vercel with live API URL)
+#   8. verify:health      (smoke-test the live API endpoint)
+# ============================================================
+
+# ── Stage 3: Terraform plan ───────────────────────────────────────────────
+# Defined in terraform.yml
+
+# ── Stage 4: Build all services in parallel ───────────────────────────────
+# These override the rules from docker.yml so they run on PIPELINE_TYPE=deploy.
+# The build jobs in docker.yml already include this rule, so they will run.
+# We just need to ensure terraform:apply completes first.
+
+deploy:build:api-gateway:
+  extends: build:api-gateway
+  needs: ["terraform:apply"]
+
+deploy:build:job-discovery:
+  extends: build:job-discovery
+  needs: ["terraform:apply"]
+
+deploy:build:job-matcher:
+  extends: build:job-matcher
+  needs: ["terraform:apply"]
+
+deploy:build:followup-scheduler:
+  extends: build:followup-scheduler
+  needs: ["terraform:apply"]
+
+deploy:build:apply-engine:
+  extends: build:apply-engine
+  needs: ["terraform:apply"]
+
+deploy:build:browser-pool:
+  extends: build:browser-pool
+  needs: ["terraform:apply"]
+
+deploy:build:ai-service:
+  extends: build:ai-service
+  needs: ["terraform:apply"]
+
+# ── Stage 5: Update all Lambda functions ──────────────────────────────────
+
+.deploy-lambda:
+  stage: deploy
+  image: amazon/aws-cli:2
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - when: never
+
+deploy:lambda:api-gateway:
+  extends: .deploy-lambda
+  needs: ["deploy:build:api-gateway"]
+  variables:
+    SERVICE_NAME: api-gateway
+  script:
+    - |
+      ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      URI="${ECR}/${ECR_REPO_PREFIX}/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+      FN="${PROJECT_NAME}-${SERVICE_NAME}"
+      aws lambda update-function-code --function-name "$FN" --image-uri "$URI" --region "${AWS_REGION}"
+      aws lambda wait function-updated --function-name "$FN" --region "${AWS_REGION}"
+      echo "Lambda $FN updated."
+
+deploy:lambda:job-discovery:
+  extends: .deploy-lambda
+  needs: ["deploy:build:job-discovery"]
+  variables:
+    SERVICE_NAME: job-discovery
+  script:
+    - |
+      ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      URI="${ECR}/${ECR_REPO_PREFIX}/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+      FN="${PROJECT_NAME}-${SERVICE_NAME}"
+      aws lambda update-function-code --function-name "$FN" --image-uri "$URI" --region "${AWS_REGION}"
+      aws lambda wait function-updated --function-name "$FN" --region "${AWS_REGION}"
+      echo "Lambda $FN updated."
+
+deploy:lambda:job-matcher:
+  extends: .deploy-lambda
+  needs: ["deploy:build:job-matcher"]
+  variables:
+    SERVICE_NAME: job-matcher
+  script:
+    - |
+      ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      URI="${ECR}/${ECR_REPO_PREFIX}/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+      FN="${PROJECT_NAME}-${SERVICE_NAME}"
+      aws lambda update-function-code --function-name "$FN" --image-uri "$URI" --region "${AWS_REGION}"
+      aws lambda wait function-updated --function-name "$FN" --region "${AWS_REGION}"
+      echo "Lambda $FN updated."
+
+deploy:lambda:followup-scheduler:
+  extends: .deploy-lambda
+  needs: ["deploy:build:followup-scheduler"]
+  variables:
+    SERVICE_NAME: followup-scheduler
+  script:
+    - |
+      ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      URI="${ECR}/${ECR_REPO_PREFIX}/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+      FN="${PROJECT_NAME}-${SERVICE_NAME}"
+      aws lambda update-function-code --function-name "$FN" --image-uri "$URI" --region "${AWS_REGION}"
+      aws lambda wait function-updated --function-name "$FN" --region "${AWS_REGION}"
+      echo "Lambda $FN updated."
+
+# ── Stage 6: Full EC2 deploy ──────────────────────────────────────────────
+
+deploy:ec2:
+  stage: deploy
+  image: alpine:3.19
+  needs:
+    - "terraform:apply"
+    - "deploy:build:apply-engine"
+    - "deploy:build:browser-pool"
+    - "deploy:build:ai-service"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - when: never
+  script:
+    - apk add --no-cache openssh-client aws-cli bash
+    - bash .gitlab/scripts/deploy-ec2.sh
+
+# ── Stage 7: Vercel frontend deploy ───────────────────────────────────────
+
+deploy:frontend:
+  stage: deploy
+  image: node:20-alpine
+  needs:
+    - "terraform:apply"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - when: never
+  variables:
+    FORCE_DEPLOY: "true"   # Always deploy frontend on DEPLOY pipeline
+    BUILD_FRONTEND: "true"
+  script:
+    - apk add --no-cache aws-cli
+    - bash .gitlab/scripts/deploy-frontend.sh
+
+# ── Stage 8: Smoke test ───────────────────────────────────────────────────
+
+verify:health:
+  stage: verify
+  image: alpine:3.19
+  needs:
+    - "deploy:lambda:api-gateway"
+    - "deploy:ec2"
+    - "deploy:frontend"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "deploy"'
+    - when: never
+  script:
+    - apk add --no-cache curl aws-cli
+    - |
+      API_URL=$(aws ssm get-parameter \
+        --name /autodream/api_endpoint \
+        --query 'Parameter.Value' --output text \
+        --region "${AWS_REGION}")
+
+      echo "Smoke-testing ${API_URL}/health ..."
+      for i in $(seq 1 5); do
+        STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${API_URL}/health" 2>/dev/null || echo "000")
+        if [ "$STATUS" = "200" ]; then
+          echo "Health check passed (HTTP ${STATUS})."
+          exit 0
+        fi
+        echo "Attempt ${i}/5: HTTP ${STATUS} — retrying in 10s..."
+        sleep 10
+      done
+
+      echo "ERROR: Health check failed after 5 attempts."
+      exit 1
+  environment:
+    name: production
+    url: $API_ENDPOINT

@@ -1,6 +1,6 @@
 locals {
   lambda_services = ["api-gateway", "job-discovery", "job-matcher", "followup-scheduler"]
-  ec2_services    = ["apply-engine", "browser-pool"]
+  ec2_services    = ["apply-engine", "browser-pool", "ai-service"]
   all_services    = concat(local.lambda_services, local.ec2_services)
 }
 

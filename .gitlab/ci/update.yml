@@ -1,0 +1,206 @@
+# ============================================================
+# UPDATE PIPELINE
+# Triggered automatically on every push to main.
+#
+# Flow:
+#   detect:changes  → finds which services changed via git diff
+#   update:build:*  → builds + pushes only changed images to ECR
+#   update:lambda:* → hot-updates Lambda function code (fast, no TF)
+#   update:ec2      → SSH to EC2, pull new images, restart services
+#   update:frontend → Vercel deploy with live NEXT_PUBLIC_API_URL
+#
+# If infra/terraform/ changed, a warning is printed but Terraform is
+# NOT applied automatically. Run the DEPLOY pipeline for that.
+# ============================================================
+
+# ── Stage 1: Detect changed services ──────────────────────────────────────
+
+detect:changes:
+  stage: detect
+  image: alpine/git:latest
+  before_script:
+    - apk add --no-cache bash coreutils
+  script:
+    - bash .gitlab/scripts/detect-changes.sh
+  artifacts:
+    reports:
+      dotenv: changes.env
+    expire_in: 1 hour
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+
+# ── Stage 2: Build only changed services ──────────────────────────────────
+
+.update-build:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST:        tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  needs: ["detect:changes"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+  before_script:
+    - apk add --no-cache aws-cli
+    - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 2 hours
+
+update:build:api-gateway:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: api-gateway
+    DOCKERFILE:   deployments/lambda/api-gateway/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/amd64
+    CHANGE_FLAG:  "${BUILD_API_GATEWAY}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:job-discovery:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: job-discovery
+    DOCKERFILE:   deployments/lambda/job-discovery/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/amd64
+    CHANGE_FLAG:  "${BUILD_JOB_DISCOVERY}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:job-matcher:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: job-matcher
+    DOCKERFILE:   deployments/lambda/job-matcher/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/amd64
+    CHANGE_FLAG:  "${BUILD_JOB_MATCHER}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:followup-scheduler:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: followup-scheduler
+    DOCKERFILE:   deployments/lambda/followup-scheduler/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/amd64
+    CHANGE_FLAG:  "${BUILD_FOLLOWUP_SCHEDULER}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:apply-engine:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: apply-engine
+    DOCKERFILE:   deployments/ec2/apply-engine/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/arm64
+    CHANGE_FLAG:  "${BUILD_APPLY_ENGINE}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:browser-pool:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: browser-pool
+    DOCKERFILE:   deployments/ec2/browser-pool/Dockerfile
+    CONTEXT:      "."
+    PLATFORM:     linux/arm64
+    CHANGE_FLAG:  "${BUILD_BROWSER_POOL}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+update:build:ai-service:
+  extends: .update-build
+  variables:
+    SERVICE_NAME: ai-service
+    DOCKERFILE:   ai-service/Dockerfile
+    CONTEXT:      ai-service
+    PLATFORM:     linux/arm64
+    CHANGE_FLAG:  "${BUILD_AI_SERVICE}"
+  script:
+    - bash .gitlab/scripts/build-and-push.sh
+
+# ── Stage 3a: Hot-update Lambda functions ─────────────────────────────────
+
+.update-lambda:
+  stage: deploy
+  image: amazon/aws-cli:2
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+
+update:lambda:api-gateway:
+  extends: .update-lambda
+  needs: ["detect:changes", "update:build:api-gateway"]
+  variables:
+    SERVICE_NAME: api-gateway
+    CHANGE_FLAG:  "${BUILD_API_GATEWAY}"
+  script:
+    - bash .gitlab/scripts/update-lambda.sh
+
+update:lambda:job-discovery:
+  extends: .update-lambda
+  needs: ["detect:changes", "update:build:job-discovery"]
+  variables:
+    SERVICE_NAME: job-discovery
+    CHANGE_FLAG:  "${BUILD_JOB_DISCOVERY}"
+  script:
+    - bash .gitlab/scripts/update-lambda.sh
+
+update:lambda:job-matcher:
+  extends: .update-lambda
+  needs: ["detect:changes", "update:build:job-matcher"]
+  variables:
+    SERVICE_NAME: job-matcher
+    CHANGE_FLAG:  "${BUILD_JOB_MATCHER}"
+  script:
+    - bash .gitlab/scripts/update-lambda.sh
+
+update:lambda:followup-scheduler:
+  extends: .update-lambda
+  needs: ["detect:changes", "update:build:followup-scheduler"]
+  variables:
+    SERVICE_NAME: followup-scheduler
+    CHANGE_FLAG:  "${BUILD_FOLLOWUP_SCHEDULER}"
+  script:
+    - bash .gitlab/scripts/update-lambda.sh
+
+# ── Stage 3b: Hot-update EC2 via SSH ──────────────────────────────────────
+
+update:ec2:
+  stage: deploy
+  image: alpine:3.19
+  needs:
+    - "detect:changes"
+    - "update:build:apply-engine"
+    - "update:build:browser-pool"
+    - "update:build:ai-service"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+  script:
+    - apk add --no-cache openssh-client aws-cli bash
+    - bash .gitlab/scripts/update-ec2.sh
+
+# ── Stage 3c: Vercel frontend deploy ──────────────────────────────────────
+
+update:frontend:
+  stage: deploy
+  image: node:20-alpine
+  needs: ["detect:changes"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+  script:
+    - apk add --no-cache aws-cli
+    - bash .gitlab/scripts/deploy-frontend.sh

@@ -170,7 +170,9 @@ test.describe('Landing page — unauthenticated', () => {
     await page.getByPlaceholder('Jane Smith').fill('Test User');
     await page.getByPlaceholder('jane@example.com').fill('test@example.com');
     await page.getByPlaceholder(/tell us about/i).fill('Hello from e2e test');
-    await page.getByRole('button', { name: /send message/i }).click();
+    // force:true bypasses Playwright's stability check — the whileInView animation on the
+    // parent motion.div causes the button to be flagged as "not stable" during scroll.
+    await page.getByRole('button', { name: /send message/i }).click({ force: true });
 
     await expect(page.getByText(/message sent/i)).toBeVisible();
   });
@@ -183,7 +185,7 @@ test.describe('Landing page — unauthenticated', () => {
     await page.getByPlaceholder('Jane Smith').fill('Test User');
     await page.getByPlaceholder('jane@example.com').fill('test@example.com');
     await page.getByPlaceholder(/tell us about/i).fill('Hello from e2e test');
-    await page.getByRole('button', { name: /send message/i }).click();
+    await page.getByRole('button', { name: /send message/i }).click({ force: true });
 
     await expect(page.getByText(/something went wrong/i)).toBeVisible();
   });

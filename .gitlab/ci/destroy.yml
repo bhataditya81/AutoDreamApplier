@@ -1,0 +1,138 @@
+# ============================================================
+# DESTROY PIPELINE
+# Triggered manually: CI/CD → Run pipeline → PIPELINE_TYPE=destroy
+#
+# Jobs:
+#   destroy:backend   — terraform destroy (manual, requires confirmation)
+#   destroy:frontend  — delete Vercel project (separate manual button)
+#
+# Safety:
+#   Both jobs require when: manual so you can't accidentally trigger them.
+#   destroy:backend requires the CI variable CONFIRM_DESTROY=yes.
+#   ECR images and S3 buckets are preserved by default to prevent data loss.
+#   Pass DESTROY_ECR=true to also delete ECR images.
+# ============================================================
+
+destroy:backend:
+  stage: destroy
+  image: hashicorp/terraform:1.7
+  when: manual
+  allow_failure: false
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_INPUT:         "false"
+  before_script:
+    - |
+      if [ "${CONFIRM_DESTROY:-no}" != "yes" ]; then
+        echo "ERROR: Set CI variable CONFIRM_DESTROY=yes to confirm you want to destroy."
+        echo "  CI/CD → Run pipeline → add variable CONFIRM_DESTROY = yes"
+        exit 1
+      fi
+    - apk add --no-cache aws-cli
+    - cd "${TF_ROOT}"
+    - |
+      terraform init \
+        -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production" \
+        -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock" \
+        -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/production/lock" \
+        -backend-config="username=gitlab-ci-token" \
+        -backend-config="password=${CI_JOB_TOKEN}" \
+        -backend-config="lock_method=POST" \
+        -backend-config="unlock_method=DELETE" \
+        -backend-config="retry_wait_min=5"
+  script:
+    - |
+      echo "=== DESTROYING backend infrastructure ==="
+      echo "  This will delete: Lambda functions, EC2 instance, Elastic IP,"
+      echo "  API Gateway, IAM roles, SSM parameters, CloudWatch logs."
+      echo "  ECR repositories and S3 buckets are PRESERVED (use DESTROY_ECR=true to delete ECR)."
+      echo ""
+
+      # Destroy everything except ECR and S3 (to preserve images and data)
+      terraform destroy -auto-approve \
+        -target=aws_lambda_function.api_gateway \
+        -target=aws_lambda_function.job_discovery \
+        -target=aws_lambda_function.job_matcher \
+        -target=aws_lambda_function.followup_scheduler \
+        -target=aws_instance.browser_pool \
+        -target=aws_eip.browser_pool \
+        -target=aws_security_group.browser_pool_ec2 \
+        -target=aws_apigatewayv2_api.main \
+        -target=aws_apigatewayv2_stage.default \
+        -target=aws_apigatewayv2_integration.api_gateway \
+        -target=aws_apigatewayv2_route.default \
+        -target=aws_iam_role.lambda_exec \
+        -target=aws_iam_role.ec2_instance \
+        -target=aws_iam_instance_profile.ec2 \
+        -target=aws_cloudwatch_log_group.api_gateway \
+        -target=aws_cloudwatch_log_group.job_discovery \
+        -target=aws_cloudwatch_log_group.job_matcher \
+        -target=aws_cloudwatch_log_group.followup_scheduler \
+        -target=aws_ssm_parameter.database_url \
+        -target=aws_ssm_parameter.redis_url \
+        -target=aws_ssm_parameter.jwt_secret \
+        -target=aws_ssm_parameter.encryption_key \
+        -target=aws_ssm_parameter.ses_from_email \
+        -target=aws_ssm_parameter.dashboard_url \
+        -target=aws_ssm_parameter.ai_service_url \
+        -target=aws_ssm_parameter.image_tag \
+        -target=aws_ssm_parameter.ec2_public_ip \
+        -target=aws_ssm_parameter.api_endpoint
+
+      echo ""
+      echo "Backend destroyed. ECR images and S3 buckets retained."
+
+      if [ "${DESTROY_ECR:-false}" = "true" ]; then
+        echo "DESTROY_ECR=true — deleting ECR images..."
+        REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        for svc in api-gateway job-discovery job-matcher followup-scheduler apply-engine browser-pool ai-service; do
+          REPO="${ECR_REPO_PREFIX}/${svc}"
+          echo "  Deleting images from ${REPO}"
+          # Delete all images (not the repo itself — terraform manages the repo)
+          IMAGES=$(aws ecr list-images --repository-name "${REPO}" --region "${AWS_REGION}" \
+                     --query 'imageIds[*]' --output json 2>/dev/null || echo "[]")
+          if [ "$IMAGES" != "[]" ] && [ "$IMAGES" != "" ]; then
+            aws ecr batch-delete-image \
+              --repository-name "${REPO}" \
+              --image-ids "${IMAGES}" \
+              --region "${AWS_REGION}" 2>/dev/null || true
+          fi
+        done
+        echo "ECR images deleted."
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "destroy"'
+      when: manual
+    - when: never
+  environment:
+    name: production
+    action: stop
+
+# ── Optional: also destroy the Vercel frontend ────────────────────────────
+
+destroy:frontend:
+  stage: destroy
+  image: node:20-alpine
+  when: manual
+  allow_failure: true   # Don't block backend destroy if Vercel fails
+  needs: []             # Can be triggered independently of destroy:backend
+  script:
+    - |
+      if [ "${CONFIRM_DESTROY:-no}" != "yes" ]; then
+        echo "ERROR: Set CI variable CONFIRM_DESTROY=yes to confirm."
+        exit 1
+      fi
+
+      npm install -g vercel --quiet
+
+      echo "Removing Vercel project ${VERCEL_PROJECT_ID}..."
+      vercel project rm "${VERCEL_PROJECT_ID}" --yes \
+        --token "${VERCEL_TOKEN}" \
+        --scope "${VERCEL_ORG_ID}" \
+        2>/dev/null || echo "Project not found or already deleted."
+
+      echo "Vercel project removed."
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PIPELINE_TYPE == "destroy"'
+      when: manual
+    - when: never

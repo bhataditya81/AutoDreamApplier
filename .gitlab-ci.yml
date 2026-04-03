@@ -1,11 +1,100 @@
+# ============================================================
+# AutoDreamApplier — GitLab CI/CD
+#
+# ┌─────────────────────────────────────────────────────────┐
+# │  HOW TO TRIGGER EACH PIPELINE                           │
+# ├─────────────────────────────────────────────────────────┤
+# │  UPDATE  → push to main (automatic)                     │
+# │  DEPLOY  → CI/CD › Run pipeline › PIPELINE_TYPE=deploy  │
+# │  DESTROY → CI/CD › Run pipeline › PIPELINE_TYPE=destroy │
+# └─────────────────────────────────────────────────────────┘
+#
+# Required GitLab CI/CD variables (Settings → CI/CD → Variables):
+#
+#  AWS
+#    AWS_ACCESS_KEY_ID        (masked, protected)
+#    AWS_SECRET_ACCESS_KEY    (masked, protected)
+#    AWS_ACCOUNT_ID           e.g. 123456789012
+#    AWS_REGION               default: us-east-1
+#
+#  Terraform — all passed as TF_VAR_* automatically
+#    TF_VAR_database_url          (masked)
+#    TF_VAR_redis_url             (masked)
+#    TF_VAR_jwt_secret            (masked)
+#    TF_VAR_dev_jwt_secret        (masked)
+#    TF_VAR_encryption_key        (masked, 32-byte hex)
+#    TF_VAR_ec2_key_pair_name     e.g. autodream-ec2
+#    TF_VAR_admin_ssh_cidr        e.g. 1.2.3.4/32
+#    TF_VAR_ses_from_email        e.g. noreply@yourdomain.com
+#    TF_VAR_gemini_api_key        (masked)
+#    TF_VAR_ai_provider           gemini | anthropic
+#    TF_VAR_llm_model             e.g. gemini-1.5-flash
+#    TF_VAR_app_env               staging | production
+#    TF_VAR_s3_bucket_resumes     (globally unique name)
+#    TF_VAR_s3_bucket_screenshots (globally unique name)
+#    TF_VAR_dashboard_url         https://your-vercel-url.vercel.app
+#
+#  EC2 SSH (used by update + deploy pipelines to reach the EC2 instance)
+#    EC2_SSH_PRIVATE_KEY      (masked, protected) raw PEM text
+#
+#  Vercel
+#    VERCEL_TOKEN             (masked)
+#    VERCEL_ORG_ID
+#    VERCEL_PROJECT_ID
+# ============================================================
+
 include:
-  - local: .gitlab/ci/base.yml
   - local: .gitlab/ci/rules.yml
+  - local: .gitlab/ci/aws-auth.yml
   - local: .gitlab/ci/go.yml
   - local: .gitlab/ci/python.yml
   - local: .gitlab/ci/node.yml
   - local: .gitlab/ci/docker.yml
-  - local: .gitlab/ci/aws-auth.yml
-  - local: .gitlab/ci/deploy-ecs.yml
-  - local: .gitlab/ci/deploy-lambda.yml
+  - local: .gitlab/ci/terraform.yml
+  - local: .gitlab/ci/update.yml
+  - local: .gitlab/ci/deploy.yml
+  - local: .gitlab/ci/destroy.yml
 
+# ── Workflow: which events start a pipeline ────────────────────────────────
+
+workflow:
+  rules:
+    # MR → validate + test only (no deploy)
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # Push to main → Update pipeline (auto)
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    # Web-triggered → Deploy or Destroy (requires PIPELINE_TYPE variable)
+    - if: '$CI_PIPELINE_SOURCE == "web" && ($PIPELINE_TYPE == "deploy" || $PIPELINE_TYPE == "destroy")'
+
+# ── Stages (all pipelines share this list; each job picks its stage) ──────
+
+stages:
+  - validate    # lint, typecheck (all pipelines)
+  - test        # unit tests (all pipelines)
+  - detect      # change detection (update pipeline only)
+  - build       # docker build + ECR push (update + deploy)
+  - infra       # terraform plan + apply (deploy only)
+  - deploy      # lambda update / EC2 SSH / vercel (update + deploy)
+  - verify      # smoke test the live API (deploy only)
+  - destroy     # terraform destroy (destroy pipeline only)
+
+# ── Global defaults ────────────────────────────────────────────────────────
+
+variables:
+  AWS_REGION:        "${AWS_REGION:-us-east-1}"
+  PROJECT_NAME:      "autodream"
+  ECR_REPO_PREFIX:   "autodreamapplier"
+  TF_ROOT:           "infra/terraform"
+  DOCKER_DRIVER:     overlay2
+  DOCKER_BUILDKIT:   "1"
+  DOCKER_TLS_CERTDIR: ""
+  GIT_DEPTH:         "50"   # enough for change detection diffs
+
+default:
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - api_failure
