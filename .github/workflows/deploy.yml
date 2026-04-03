@@ -12,6 +12,12 @@ on:
         type: boolean
         default: false
 
+# Prevent two deploys racing on Terraform state. Second run queues instead
+# of cancelling so infrastructure is never left half-applied.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -26,10 +32,9 @@ permissions:
   id-token: write
 
 jobs:
-# ── Validate & Test (skippable via skip_tests input) ─────────────────────
-# Jobs always run so they never become "skipped" — skipped jobs propagate
-# transitively through the needs DAG and block all downstream jobs.
-# Instead, steps inside each job are conditional on skip_tests.
+# ── Validate & Test ───────────────────────────────────────────────────────
+# Jobs always run (never "skipped") — steps are conditional on skip_tests.
+# Skipped jobs propagate transitively through needs DAG and block everything.
 
   go-test:
     name: go:test
@@ -45,6 +50,12 @@ jobs:
       - uses: actions/setup-go@v5
         if: ${{ !inputs.skip_tests }}
         with: { go-version: "1.22" }
+      - uses: actions/cache@v4
+        if: ${{ !inputs.skip_tests }}
+        with:
+          path: ~/go/pkg/mod
+          key: go-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-
       - run: sudo apt-get install -y gcc
         if: ${{ !inputs.skip_tests }}
       - run: make test-backend
@@ -62,6 +73,12 @@ jobs:
       - uses: actions/setup-python@v5
         if: ${{ !inputs.skip_tests }}
         with: { python-version: "3.11" }
+      - uses: actions/cache@v4
+        if: ${{ !inputs.skip_tests }}
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('ai-service/requirements.txt') }}
+          restore-keys: pip-
       - run: pip install pytest pytest-asyncio httpx && pip install -r ai-service/requirements.txt
         if: ${{ !inputs.skip_tests }}
       - run: cd ai-service && pytest -q tests
@@ -88,10 +105,17 @@ jobs:
       TF_VAR_app_env: staging
       TF_VAR_s3_bucket_resumes: autodream-resumes-prod
       TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+      TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: "1.7.0" }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-providers-${{ hashFiles('infra/terraform/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-
+      - run: mkdir -p ~/.terraform.d/plugin-cache
       - run: terraform init
         working-directory: ${{ env.TF_ROOT }}
       - run: terraform validate
@@ -105,7 +129,7 @@ jobs:
     name: terraform:apply:ecr
     runs-on: ubuntu-latest
     needs: [terraform-plan]
-    environment: production         # ← requires reviewer approval in GitHub
+    environment: production
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -121,10 +145,17 @@ jobs:
       TF_VAR_app_env: staging
       TF_VAR_s3_bucket_resumes: autodream-resumes-prod
       TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+      TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: "1.7.0" }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-providers-${{ hashFiles('infra/terraform/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-
+      - run: mkdir -p ~/.terraform.d/plugin-cache
       - run: terraform init
         working-directory: ${{ env.TF_ROOT }}
       - run: |
@@ -134,15 +165,19 @@ jobs:
         working-directory: ${{ env.TF_ROOT }}
 
 # ── Build all services (parallel) ────────────────────────────────────────
+# amd64: ubuntu-latest runner, no QEMU needed.
+# arm64: ubuntu-24.04-arm native runner — eliminates QEMU emulation
+#         (~15-20 min saved on first build vs emulated pip/go installs).
+# All builds use GitHub Actions cache (type=gha, 10 GB free per repo)
+# instead of pulling ECR :latest as cache source.
 
   build-ai-service-deps:
     name: build:ai-service-deps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
     needs: [terraform-apply-ecr]
-    if: ${{ !inputs.skip_deps_build }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
+        if: ${{ !inputs.skip_deps_build }}
       - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -153,14 +188,13 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           DEPS="${ECR}/${ECR_REPO_PREFIX}/ai-service:deps"
-          docker build --platform linux/arm64 \
-            --cache-from "${DEPS}" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
+          docker buildx build --platform linux/arm64 \
+            --cache-from type=gha,scope=ai-service-deps \
+            --cache-to   type=gha,mode=max,scope=ai-service-deps \
             -f ai-service/Dockerfile.deps \
-            -t "${DEPS}" ai-service
-          docker push "${DEPS}"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${DEPS}" --push \
+            ai-service
+        if: ${{ !inputs.skip_deps_build }}
 
   build-api-gateway:
     name: build:api-gateway
@@ -168,6 +202,7 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -177,15 +212,11 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/api-gateway"
-          docker build --platform linux/amd64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/amd64 \
+            --cache-from type=gha,scope=api-gateway \
+            --cache-to   type=gha,mode=max,scope=api-gateway \
             -f deployments/lambda/api-gateway/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-job-discovery:
     name: build:job-discovery
@@ -193,6 +224,7 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -202,15 +234,11 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-discovery"
-          docker build --platform linux/amd64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/amd64 \
+            --cache-from type=gha,scope=job-discovery \
+            --cache-to   type=gha,mode=max,scope=job-discovery \
             -f deployments/lambda/job-discovery/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-job-matcher:
     name: build:job-matcher
@@ -218,6 +246,7 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -227,15 +256,11 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-matcher"
-          docker build --platform linux/amd64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/amd64 \
+            --cache-from type=gha,scope=job-matcher \
+            --cache-to   type=gha,mode=max,scope=job-matcher \
             -f deployments/lambda/job-matcher/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-followup-scheduler:
     name: build:followup-scheduler
@@ -243,6 +268,7 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -252,23 +278,18 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/followup-scheduler"
-          docker build --platform linux/amd64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/amd64 \
+            --cache-from type=gha,scope=followup-scheduler \
+            --cache-to   type=gha,mode=max,scope=followup-scheduler \
             -f deployments/lambda/followup-scheduler/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-apply-engine:
     name: build:apply-engine
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -279,23 +300,18 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/apply-engine"
-          docker build --platform linux/arm64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/arm64 \
+            --cache-from type=gha,scope=apply-engine \
+            --cache-to   type=gha,mode=max,scope=apply-engine \
             -f deployments/ec2/apply-engine/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-browser-pool:
     name: build:browser-pool
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -306,24 +322,18 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/browser-pool"
-          docker build --platform linux/arm64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from "${REPO}:latest" \
+          docker buildx build --platform linux/arm64 \
+            --cache-from type=gha,scope=browser-pool \
+            --cache-to   type=gha,mode=max,scope=browser-pool \
             -f deployments/ec2/browser-pool/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" .
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
   build-ai-service:
     name: build:ai-service
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
     needs: [terraform-apply-ecr, build-ai-service-deps]
-    if: ${{ always() && needs.terraform-apply-ecr.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -335,17 +345,13 @@ jobs:
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/ai-service"
           DEPS="${REPO}:deps"
-          docker build --platform linux/arm64 \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
+          docker buildx build --platform linux/arm64 \
+            --cache-from type=gha,scope=ai-service \
+            --cache-to   type=gha,mode=max,scope=ai-service \
             --build-arg BASE_IMAGE="${DEPS}" \
-            --cache-from "${REPO}:latest" \
             -f ai-service/Dockerfile \
-            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" \
+            -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push \
             ai-service
-          docker push "${REPO}:${GITHUB_SHA}"
-          docker push "${REPO}:latest"
-        env:
-          DOCKER_BUILDKIT: "1"
 
 # ── Terraform apply full (after all images pushed) ────────────────────────
 
@@ -377,31 +383,42 @@ jobs:
       TF_VAR_app_env: staging
       TF_VAR_s3_bucket_resumes: autodream-resumes-prod
       TF_VAR_s3_bucket_screenshots: autodream-screenshots-prod
+      TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
     outputs:
-      ec2_ip: ${{ steps.outputs.outputs.ec2_ip }}
-      api_url: ${{ steps.outputs.outputs.api_url }}
+      ec2_ip: ${{ steps.tf-outputs.outputs.ec2_ip }}
+      api_url: ${{ steps.tf-outputs.outputs.api_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.0"
           terraform_wrapper: false
+      - uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-providers-${{ hashFiles('infra/terraform/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-
+      - run: mkdir -p ~/.terraform.d/plugin-cache
       - run: terraform init
         working-directory: ${{ env.TF_ROOT }}
       - run: terraform apply -auto-approve
         working-directory: ${{ env.TF_ROOT }}
-      - id: outputs
+      - id: tf-outputs
         run: |
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
           echo "api_url=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
         working-directory: ${{ env.TF_ROOT }}
 
-# ── Deploy Lambda functions ───────────────────────────────────────────────
+# ── Deploy Lambda functions (matrix — 1 job, 4 parallel instances) ────────
 
-  deploy-lambda-api-gateway:
-    name: deploy:lambda:api-gateway
+  deploy-lambdas:
+    name: deploy:lambda:${{ matrix.service }}
     runs-on: ubuntu-latest
-    needs: [terraform-apply-full, build-api-gateway]
+    needs: [terraform-apply-full]
+    strategy:
+      matrix:
+        service: [api-gateway, job-discovery, job-matcher, followup-scheduler]
+      fail-fast: false
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -409,54 +426,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - run: |
-          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/api-gateway:${GITHUB_SHA}"
-          aws lambda update-function-code --function-name "${PROJECT_NAME}-api-gateway" --image-uri "$URI"
-          aws lambda wait function-updated --function-name "${PROJECT_NAME}-api-gateway"
-
-  deploy-lambda-job-discovery:
-    name: deploy:lambda:job-discovery
-    runs-on: ubuntu-latest
-    needs: [terraform-apply-full, build-job-discovery]
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - run: |
-          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-discovery:${GITHUB_SHA}"
-          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-discovery" --image-uri "$URI"
-          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-discovery"
-
-  deploy-lambda-job-matcher:
-    name: deploy:lambda:job-matcher
-    runs-on: ubuntu-latest
-    needs: [terraform-apply-full, build-job-matcher]
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - run: |
-          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/job-matcher:${GITHUB_SHA}"
-          aws lambda update-function-code --function-name "${PROJECT_NAME}-job-matcher" --image-uri "$URI"
-          aws lambda wait function-updated --function-name "${PROJECT_NAME}-job-matcher"
-
-  deploy-lambda-followup-scheduler:
-    name: deploy:lambda:followup-scheduler
-    runs-on: ubuntu-latest
-    needs: [terraform-apply-full, build-followup-scheduler]
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - run: |
-          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/followup-scheduler:${GITHUB_SHA}"
-          aws lambda update-function-code --function-name "${PROJECT_NAME}-followup-scheduler" --image-uri "$URI"
-          aws lambda wait function-updated --function-name "${PROJECT_NAME}-followup-scheduler"
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/${{ matrix.service }}:${GITHUB_SHA}"
+          aws lambda update-function-code \
+            --function-name "${PROJECT_NAME}-${{ matrix.service }}" \
+            --image-uri "$URI"
+          aws lambda wait function-updated \
+            --function-name "${PROJECT_NAME}-${{ matrix.service }}"
+          echo "Lambda ${PROJECT_NAME}-${{ matrix.service }} updated."
 
 # ── Deploy EC2 + Frontend ─────────────────────────────────────────────────
 
@@ -499,8 +475,8 @@ jobs:
   verify-health:
     name: verify:health
     runs-on: ubuntu-latest
-    needs: [deploy-lambda-api-gateway, deploy-ec2, deploy-frontend]
-    if: ${{ always() && needs.deploy-lambda-api-gateway.result == 'success' }}
+    needs: [deploy-lambdas, deploy-ec2, deploy-frontend]
+    if: ${{ always() && needs.deploy-lambdas.result == 'success' }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
