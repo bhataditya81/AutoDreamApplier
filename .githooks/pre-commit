@@ -33,9 +33,21 @@ if [ -n "$STAGED_GO" ]; then
   else
     ok "go:vet"
   fi
+
+  # golangci-lint
+  if command -v golangci-lint &>/dev/null; then
+    if golangci-lint run ./... 2>&1; then
+      ok "go:lint (golangci-lint)"
+    else
+      fail "go:lint — fix golangci-lint errors above"
+    fi
+  else
+    skip "go:lint (golangci-lint not installed — run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)"
+  fi
 else
   skip "go:fmt  (no Go files staged)"
   skip "go:vet  (no Go files staged)"
+  skip "go:lint (no Go files staged)"
 fi
 
 # ── Frontend checks ────────────────────────────────────────────────────────
