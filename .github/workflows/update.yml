@@ -152,6 +152,7 @@ jobs:
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/api-gateway"
           docker buildx build --platform linux/amd64 \
+            --provenance=false \
             --cache-from type=gha,scope=api-gateway \
             --cache-to   type=gha,mode=max,scope=api-gateway \
             -f deployments/lambda/api-gateway/Dockerfile \
@@ -175,6 +176,7 @@ jobs:
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-discovery"
           docker buildx build --platform linux/amd64 \
+            --provenance=false \
             --cache-from type=gha,scope=job-discovery \
             --cache-to   type=gha,mode=max,scope=job-discovery \
             -f deployments/lambda/job-discovery/Dockerfile \
@@ -198,6 +200,7 @@ jobs:
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-matcher"
           docker buildx build --platform linux/amd64 \
+            --provenance=false \
             --cache-from type=gha,scope=job-matcher \
             --cache-to   type=gha,mode=max,scope=job-matcher \
             -f deployments/lambda/job-matcher/Dockerfile \
@@ -221,6 +224,7 @@ jobs:
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/followup-scheduler"
           docker buildx build --platform linux/amd64 \
+            --provenance=false \
             --cache-from type=gha,scope=followup-scheduler \
             --cache-to   type=gha,mode=max,scope=followup-scheduler \
             -f deployments/lambda/followup-scheduler/Dockerfile \
