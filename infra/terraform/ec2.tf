@@ -117,8 +117,10 @@ resource "aws_instance" "browser_pool" {
   }
 
   lifecycle {
-    # Don't replace instance on AMI update — use deploy.sh instead
-    ignore_changes = [ami, user_data]
+    # Don't replace instance on AMI update — use deploy.sh instead.
+    # subnet_id: tolist() ordering is non-deterministic; ignore to prevent
+    # accidental replacement when the instance is imported into state.
+    ignore_changes = [ami, user_data, subnet_id]
   }
 }
 
