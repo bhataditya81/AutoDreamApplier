@@ -89,7 +89,7 @@ resource "aws_iam_role" "ec2_instance" {
 }
 
 data "aws_iam_policy_document" "ec2_permissions" {
-  # S3
+  # S3 — app buckets + .deploy prefix (used by CI to transfer scripts/compose)
   statement {
     effect  = "Allow"
     actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
@@ -144,4 +144,11 @@ resource "aws_iam_role_policy" "ec2_permissions" {
 resource "aws_iam_instance_profile" "ec2" {
   name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.ec2_instance.name
+}
+
+# SSM agent communication (ssmmessages, ec2messages) — required for
+# SSM Run Command and Session Manager. Attached manually earlier; now in TF.
+resource "aws_iam_role_policy_attachment" "ec2_ssm" {
+  role       = aws_iam_role.ec2_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }

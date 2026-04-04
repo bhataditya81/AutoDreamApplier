@@ -52,6 +52,12 @@ resource "aws_ssm_parameter" "s3_bucket_screenshots" {
   value = var.s3_bucket_screenshots
 }
 
+resource "aws_ssm_parameter" "gemini_api_key" {
+  name  = "/autodream/gemini_api_key"
+  type  = "SecureString"
+  value = var.gemini_api_key != "" ? var.gemini_api_key : "disabled"
+}
+
 resource "aws_ssm_parameter" "ecr_registry" {
   name  = "/autodream/ecr_registry"
   type  = "String"

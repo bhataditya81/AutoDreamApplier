@@ -15,6 +15,10 @@ on:
         description: "Skip ALL image builds — use existing :latest images in ECR"
         type: boolean
         default: false
+      replace_ec2:
+        description: "Force replacement of the EC2 instance (fixes SSH key mismatch or corrupted instance state)"
+        type: boolean
+        default: false
 
 # Prevent two deploys racing on Terraform state. Second run queues instead
 # of cancelling so infrastructure is never left half-applied.
@@ -479,7 +483,13 @@ jobs:
       - run: mkdir -p ~/.terraform.d/plugin-cache
       - run: terraform init
         working-directory: ${{ env.TF_ROOT }}
-      - run: terraform apply -auto-approve
+      - run: |
+          REPLACE_FLAG=""
+          if [ "${{ inputs.replace_ec2 }}" = "true" ]; then
+            REPLACE_FLAG="-replace=aws_instance.browser_pool"
+            echo "replace_ec2=true: will destroy and recreate EC2 instance."
+          fi
+          terraform apply -auto-approve $REPLACE_FLAG
         working-directory: ${{ env.TF_ROOT }}
       - id: tf-outputs
         run: |
@@ -527,6 +537,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - run: bash .gitlab/scripts/deploy-ec2.sh
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          ECR_REPO_PREFIX: ${{ env.ECR_REPO_PREFIX }}
 
   deploy-frontend:
     name: deploy:frontend

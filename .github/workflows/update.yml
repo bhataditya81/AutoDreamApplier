@@ -430,7 +430,8 @@ jobs:
           BUILD_APPLY_ENGINE: ${{ needs.detect-changes.outputs.apply_engine }}
           BUILD_BROWSER_POOL: ${{ needs.detect-changes.outputs.browser_pool }}
           BUILD_AI_SERVICE:   ${{ needs.detect-changes.outputs.ai_service }}
-          CI_COMMIT_SHA:      ${{ github.sha }}
+          AWS_ACCOUNT_ID:     ${{ secrets.AWS_ACCOUNT_ID }}
+          ECR_REPO_PREFIX:    ${{ env.ECR_REPO_PREFIX }}
 
 # ── Stage 3c: Vercel frontend deploy ──────────────────────────────────────
 

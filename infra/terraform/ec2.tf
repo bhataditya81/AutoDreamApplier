@@ -112,6 +112,15 @@ resource "aws_instance" "browser_pool" {
 
   user_data = base64encode(file("${path.module}/../../deployments/ec2/setup.sh"))
 
+  # IMDSv2 with hop_limit=2: allows Docker containers on this host to obtain
+  # IAM role credentials from the instance metadata service (default limit=1
+  # blocks containers; limit=2 allows one hop through the Docker bridge).
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+    http_endpoint               = "enabled"
+  }
+
   tags = {
     Name = "${var.project_name}-browser-pool"
   }

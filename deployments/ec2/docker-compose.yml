@@ -6,7 +6,7 @@ networks:
 
 services:
   browser-pool:
-    image: ${ECR_REGISTRY}/autodreamapplier/browser-pool:${IMAGE_TAG:-latest}
+    image: ${ECR_REGISTRY}/${ECR_PREFIX:-autodream}/browser-pool:${IMAGE_TAG:-latest}
     container_name: autodream-browser-pool
     restart: unless-stopped
     networks:
@@ -30,7 +30,7 @@ services:
           memory: 350M           # Leave headroom on 512MB t4g.nano
 
   ai-service:
-    image: ${ECR_REGISTRY}/autodreamapplier/ai-service:${IMAGE_TAG:-latest}
+    image: ${ECR_REGISTRY}/${ECR_PREFIX:-autodream}/ai-service:${IMAGE_TAG:-latest}
     container_name: autodream-ai-service
     restart: unless-stopped
     networks:
@@ -43,8 +43,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
       - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_RESUMES=${S3_BUCKET_RESUMES}
       - S3_BUCKET_AI_OUTPUTS=${S3_BUCKET_SCREENSHOTS}
     healthcheck:
@@ -55,7 +53,7 @@ services:
           memory: 200M
 
   apply-engine:
-    image: ${ECR_REGISTRY}/autodreamapplier/apply-engine:${IMAGE_TAG:-latest}
+    image: ${ECR_REGISTRY}/${ECR_PREFIX:-autodream}/apply-engine:${IMAGE_TAG:-latest}
     container_name: autodream-apply-engine
     restart: unless-stopped
     networks:
@@ -69,8 +67,6 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_RESUMES=${S3_BUCKET_RESUMES}
       - S3_BUCKET_SCREENSHOTS=${S3_BUCKET_SCREENSHOTS}
       - SES_FROM_EMAIL=${SES_FROM_EMAIL}

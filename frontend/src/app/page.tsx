@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
-import LandingPage from './(marketing)/page';
+import LandingPage from '@/components/marketing/landing-page';
 
 export default function RootPage() {
   const router = useRouter();
