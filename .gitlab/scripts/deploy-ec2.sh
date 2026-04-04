@@ -24,7 +24,7 @@ if [ -z "$EC2_IP" ] || [ "$EC2_IP" = "None" ]; then
 fi
 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-IMAGE_TAG="${CI_COMMIT_SHA}"
+IMAGE_TAG="${CI_COMMIT_SHA:-${GITHUB_SHA}}"
 
 echo "Full EC2 deploy to ${EC2_IP} (tag=${IMAGE_TAG})"
 ssh-keyscan -H "${EC2_IP}" >> ~/.ssh/known_hosts 2>/dev/null
