@@ -37,15 +37,16 @@ jobs:
     name: detect:changes
     runs-on: ubuntu-latest
     outputs:
-      api_gateway:        ${{ steps.detect.outputs.BUILD_API_GATEWAY }}
-      job_discovery:      ${{ steps.detect.outputs.BUILD_JOB_DISCOVERY }}
-      job_matcher:        ${{ steps.detect.outputs.BUILD_JOB_MATCHER }}
-      followup_scheduler: ${{ steps.detect.outputs.BUILD_FOLLOWUP_SCHEDULER }}
-      apply_engine:       ${{ steps.detect.outputs.BUILD_APPLY_ENGINE }}
-      browser_pool:       ${{ steps.detect.outputs.BUILD_BROWSER_POOL }}
-      ai_service:         ${{ steps.detect.outputs.BUILD_AI_SERVICE }}
-      frontend:           ${{ steps.detect.outputs.BUILD_FRONTEND }}
-      infra_changed:      ${{ steps.detect.outputs.INFRA_CHANGED }}
+      api_gateway:          ${{ steps.detect.outputs.BUILD_API_GATEWAY }}
+      job_discovery:        ${{ steps.detect.outputs.BUILD_JOB_DISCOVERY }}
+      job_matcher:          ${{ steps.detect.outputs.BUILD_JOB_MATCHER }}
+      followup_scheduler:   ${{ steps.detect.outputs.BUILD_FOLLOWUP_SCHEDULER }}
+      apply_engine:         ${{ steps.detect.outputs.BUILD_APPLY_ENGINE }}
+      browser_pool_base:    ${{ steps.detect.outputs.BUILD_BROWSER_POOL_BASE }}
+      browser_pool:         ${{ steps.detect.outputs.BUILD_BROWSER_POOL }}
+      ai_service:           ${{ steps.detect.outputs.BUILD_AI_SERVICE }}
+      frontend:             ${{ steps.detect.outputs.BUILD_FRONTEND }}
+      infra_changed:        ${{ steps.detect.outputs.INFRA_CHANGED }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,6 +70,7 @@ jobs:
             echo "BUILD_JOB_MATCHER=true"         >> $GITHUB_OUTPUT
             echo "BUILD_FOLLOWUP_SCHEDULER=true"  >> $GITHUB_OUTPUT
             echo "BUILD_APPLY_ENGINE=true"        >> $GITHUB_OUTPUT
+            echo "BUILD_BROWSER_POOL_BASE=true"   >> $GITHUB_OUTPUT
             echo "BUILD_BROWSER_POOL=true"        >> $GITHUB_OUTPUT
             echo "BUILD_AI_SERVICE=true"          >> $GITHUB_OUTPUT
             echo "BUILD_FRONTEND=true"            >> $GITHUB_OUTPUT
@@ -103,6 +105,10 @@ jobs:
           changed_in $GO_COMMON "cmd/apply-engine/" "deployments/ec2/apply-engine/" \
             && echo "BUILD_APPLY_ENGINE=true" >> $GITHUB_OUTPUT \
             || echo "BUILD_APPLY_ENGINE=false" >> $GITHUB_OUTPUT
+
+          changed_in "deployments/ec2/browser-pool/Dockerfile.base" \
+            && echo "BUILD_BROWSER_POOL_BASE=true" >> $GITHUB_OUTPUT \
+            || echo "BUILD_BROWSER_POOL_BASE=false" >> $GITHUB_OUTPUT
 
           changed_in "deployments/ec2/browser-pool/" \
             && echo "BUILD_BROWSER_POOL=true" >> $GITHUB_OUTPUT \
@@ -243,11 +249,38 @@ jobs:
             -f deployments/ec2/apply-engine/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
+  build-browser-pool-base:
+    name: build:browser-pool-base
+    runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
+    needs: [detect-changes]
+    if: ${{ needs.detect-changes.outputs.browser_pool_base == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          BASE="${ECR}/${ECR_REPO_PREFIX}/browser-pool:base"
+          docker buildx build --platform linux/arm64 \
+            --cache-from type=gha,scope=browser-pool-base \
+            --cache-to   type=gha,mode=max,scope=browser-pool-base \
+            -f deployments/ec2/browser-pool/Dockerfile.base \
+            -t "${BASE}" --push \
+            deployments/ec2/browser-pool
+
   build-browser-pool:
     name: build:browser-pool
     runs-on: ubuntu-24.04-arm        # native arm64 — no QEMU
-    needs: [detect-changes]
-    if: ${{ needs.detect-changes.outputs.browser_pool == 'true' }}
+    needs: [detect-changes, build-browser-pool-base]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.browser_pool == 'true' &&
+      (needs.build-browser-pool-base.result == 'success' || needs.build-browser-pool-base.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -260,9 +293,11 @@ jobs:
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/browser-pool"
+          BASE="${REPO}:base"
           docker buildx build --platform linux/arm64 \
             --cache-from type=gha,scope=browser-pool \
             --cache-to   type=gha,mode=max,scope=browser-pool \
+            --build-arg BASE_IMAGE="${BASE}" \
             -f deployments/ec2/browser-pool/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
 
@@ -367,6 +402,7 @@ jobs:
     needs:
       - detect-changes
       - build-apply-engine
+      - build-browser-pool-base
       - build-browser-pool
       - build-ai-service
     if: |
@@ -375,6 +411,7 @@ jobs:
        needs.detect-changes.outputs.browser_pool == 'true' ||
        needs.detect-changes.outputs.ai_service == 'true') &&
       (needs.build-apply-engine.result == 'success' || needs.build-apply-engine.result == 'skipped') &&
+      (needs.build-browser-pool-base.result == 'success' || needs.build-browser-pool-base.result == 'skipped') &&
       (needs.build-browser-pool.result == 'success' || needs.build-browser-pool.result == 'skipped') &&
       (needs.build-ai-service.result == 'success' || needs.build-ai-service.result == 'skipped')
     steps:

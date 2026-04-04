@@ -1,0 +1,24 @@
+# Pre-built Chromium base layer for browser-pool.
+# Rebuilt only when this file changes (i.e. when you want a Chromium version bump).
+# Tagged as :base in ECR and used as BASE_IMAGE in the main Dockerfile.
+# This decouples the slow apt-get install (~8-12 min) from Go source rebuilds (~1-2 min).
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser

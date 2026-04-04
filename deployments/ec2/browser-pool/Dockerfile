@@ -1,3 +1,9 @@
+# BASE_IMAGE is the pre-built Chromium base image (ECR :base tag).
+# In CI this is set to the ECR base image so apt-get install is skipped entirely.
+# For local builds: docker build --build-arg BASE_IMAGE=debian:bookworm-slim
+#   (will be slow — run Dockerfile.base first for fast local iteration)
+ARG BASE_IMAGE=debian:bookworm-slim
+
 FROM golang:1.25-bookworm AS builder
 WORKDIR /app
 
@@ -11,29 +17,7 @@ RUN --mount=type=cache,target=/root/go/pkg/mod \
     go build -trimpath -ldflags="-s -w" \
     -o browser-pool ./cmd/browser-pool/
 
-# Use a Debian slim base and install Playwright deps
-FROM debian:bookworm-slim
-
-# Install Chromium and its dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
-    fonts-liberation \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+FROM ${BASE_IMAGE}
 
 COPY --from=builder /app/browser-pool /browser-pool
 
