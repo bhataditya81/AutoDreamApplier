@@ -8,7 +8,11 @@ on:
         type: boolean
         default: false
       skip_deps_build:
-        description: "Skip ai-service deps image rebuild"
+        description: "Skip browser-pool-base and ai-service-deps image rebuilds"
+        type: boolean
+        default: false
+      skip_image_builds:
+        description: "Skip ALL image builds — use existing :latest images in ECR"
         type: boolean
         default: false
 
@@ -165,11 +169,12 @@ jobs:
         working-directory: ${{ env.TF_ROOT }}
 
 # ── Build all services (parallel) ────────────────────────────────────────
+# skip_image_builds=true  → all steps are no-ops; existing ECR :latest used.
+# skip_deps_build=true    → only base/deps images skipped; app images rebuilt.
 # amd64: ubuntu-latest runner, no QEMU needed.
-# arm64: ubuntu-24.04-arm native runner — eliminates QEMU emulation
-#         (~15-20 min saved on first build vs emulated pip/go installs).
-# All builds use GitHub Actions cache (type=gha, 10 GB free per repo)
-# instead of pulling ECR :latest as cache source.
+# arm64: ubuntu-24.04-arm native runner — eliminates QEMU emulation.
+# All builds use GHA layer cache (type=gha, 10 GB free per repo).
+# Lambda builds use --provenance=false (Lambda rejects OCI index manifests).
 
   build-browser-pool-base:
     name: build:browser-pool-base
@@ -177,14 +182,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
-        if: ${{ !inputs.skip_deps_build }}
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           BASE="${ECR}/${ECR_REPO_PREFIX}/browser-pool:base"
@@ -194,7 +202,7 @@ jobs:
             -f deployments/ec2/browser-pool/Dockerfile.base \
             -t "${BASE}" --push \
             deployments/ec2/browser-pool
-        if: ${{ !inputs.skip_deps_build }}
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
 
   build-ai-service-deps:
     name: build:ai-service-deps
@@ -202,14 +210,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
-        if: ${{ !inputs.skip_deps_build }}
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           DEPS="${ECR}/${ECR_REPO_PREFIX}/ai-service:deps"
@@ -219,7 +230,7 @@ jobs:
             -f ai-service/Dockerfile.deps \
             -t "${DEPS}" --push \
             ai-service
-        if: ${{ !inputs.skip_deps_build }}
+        if: ${{ !inputs.skip_image_builds && !inputs.skip_deps_build }}
 
   build-api-gateway:
     name: build:api-gateway
@@ -227,13 +238,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/api-gateway"
@@ -243,6 +258,7 @@ jobs:
             --cache-to   type=gha,mode=max,scope=api-gateway \
             -f deployments/lambda/api-gateway/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-job-discovery:
     name: build:job-discovery
@@ -250,13 +266,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-discovery"
@@ -266,6 +286,7 @@ jobs:
             --cache-to   type=gha,mode=max,scope=job-discovery \
             -f deployments/lambda/job-discovery/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-job-matcher:
     name: build:job-matcher
@@ -273,13 +294,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/job-matcher"
@@ -289,6 +314,7 @@ jobs:
             --cache-to   type=gha,mode=max,scope=job-matcher \
             -f deployments/lambda/job-matcher/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-followup-scheduler:
     name: build:followup-scheduler
@@ -296,13 +322,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/followup-scheduler"
@@ -312,6 +342,7 @@ jobs:
             --cache-to   type=gha,mode=max,scope=followup-scheduler \
             -f deployments/lambda/followup-scheduler/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-apply-engine:
     name: build:apply-engine
@@ -319,13 +350,17 @@ jobs:
     needs: [terraform-apply-ecr]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/apply-engine"
@@ -334,6 +369,7 @@ jobs:
             --cache-to   type=gha,mode=max,scope=apply-engine \
             -f deployments/ec2/apply-engine/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-browser-pool:
     name: build:browser-pool
@@ -341,13 +377,17 @@ jobs:
     needs: [terraform-apply-ecr, build-browser-pool-base]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/browser-pool"
@@ -358,6 +398,7 @@ jobs:
             --build-arg BASE_IMAGE="${BASE}" \
             -f deployments/ec2/browser-pool/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push .
+        if: ${{ !inputs.skip_image_builds }}
 
   build-ai-service:
     name: build:ai-service
@@ -365,13 +406,17 @@ jobs:
     needs: [terraform-apply-ecr, build-ai-service-deps]
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !inputs.skip_image_builds }}
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.skip_image_builds }}
       - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ !inputs.skip_image_builds }}
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
+        if: ${{ !inputs.skip_image_builds }}
       - run: |
           ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           REPO="${ECR}/${ECR_REPO_PREFIX}/ai-service"
@@ -383,6 +428,7 @@ jobs:
             -f ai-service/Dockerfile \
             -t "${REPO}:${GITHUB_SHA}" -t "${REPO}:latest" --push \
             ai-service
+        if: ${{ !inputs.skip_image_builds }}
 
 # ── Terraform apply full (after all images pushed) ────────────────────────
 
