@@ -514,13 +514,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - run: |
-          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/${{ matrix.service }}:${GITHUB_SHA}"
+          # When skip_image_builds=true images were not rebuilt for this SHA,
+          # so fall back to :latest which was set by the last real build.
+          if [ "${{ inputs.skip_image_builds }}" = "true" ]; then
+            TAG="latest"
+          else
+            TAG="${GITHUB_SHA}"
+          fi
+          URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_PREFIX}/${{ matrix.service }}:${TAG}"
           aws lambda update-function-code \
             --function-name "${PROJECT_NAME}-${{ matrix.service }}" \
             --image-uri "$URI"
           aws lambda wait function-updated \
             --function-name "${PROJECT_NAME}-${{ matrix.service }}"
-          echo "Lambda ${PROJECT_NAME}-${{ matrix.service }} updated."
+          echo "Lambda ${PROJECT_NAME}-${{ matrix.service }} updated to ${TAG}."
 
 # ── Deploy EC2 + Frontend ─────────────────────────────────────────────────
 
@@ -540,6 +547,9 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           ECR_REPO_PREFIX: ${{ env.ECR_REPO_PREFIX }}
+          # When skip_image_builds=true, no new image was built for this SHA.
+          # Pass OVERRIDE_TAG=latest so the script uses the last built image.
+          OVERRIDE_TAG: ${{ inputs.skip_image_builds && 'latest' || '' }}
 
   deploy-frontend:
     name: deploy:frontend

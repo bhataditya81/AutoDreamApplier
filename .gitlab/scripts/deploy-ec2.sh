@@ -4,7 +4,9 @@
 set -euxo pipefail
 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-IMAGE_TAG="${CI_COMMIT_SHA:-${GITHUB_SHA}}"
+# OVERRIDE_TAG is set to "latest" when skip_image_builds=true (no new image
+# was built for this SHA). Otherwise use the commit SHA for immutable tagging.
+IMAGE_TAG="${OVERRIDE_TAG:-${CI_COMMIT_SHA:-${GITHUB_SHA}}}"
 ECR_PREFIX="${ECR_REPO_PREFIX:-autodream}"
 S3_DEPLOY_PREFIX="autodream-resumes-prod/.deploy"
 
