@@ -39,7 +39,7 @@ vercel deploy --prod \
   --token "${VERCEL_TOKEN}" \
   --scope "${VERCEL_ORG_ID}" \
   --yes \
-  --build-env NEXT_PUBLIC_CACHE_BUST="${GITHUB_SHA:-$(date +%s)}" \
+  --force \
   2>&1 | tee /tmp/vercel-out.txt
 
 DEPLOY_URL=$(grep -Eo 'https://[^ ]+\.vercel\.app' /tmp/vercel-out.txt | head -1 || echo "")
