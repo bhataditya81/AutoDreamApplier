@@ -104,7 +104,9 @@ authTest.describe('Analytics page', () => {
 
   authTest('Interviews stat card shows count', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard/analytics');
-    await expect(page.getByText('8')).toBeVisible();
+    // '8' appears in multiple elements (chart ticks, sidebar, stat cards) — scope
+    // to the paragraph stat value inside the Interviews card using exact match.
+    await expect(page.getByRole('paragraph').filter({ hasText: /^8$/ })).toBeVisible();
   });
 
   authTest('shows interview rate conversion percentage', async ({ authenticatedPage: page }) => {
