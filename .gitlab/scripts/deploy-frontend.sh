@@ -33,12 +33,13 @@ echo "${API_URL}" | vercel env add NEXT_PUBLIC_API_URL production \
   --token "${VERCEL_TOKEN}" \
   --scope "${VERCEL_ORG_ID}"
 
-# Deploy
+# Deploy — force fresh build to avoid stale Vercel build cache
 cd frontend
 vercel deploy --prod \
   --token "${VERCEL_TOKEN}" \
   --scope "${VERCEL_ORG_ID}" \
   --yes \
+  --build-env NEXT_PUBLIC_CACHE_BUST="${GITHUB_SHA:-$(date +%s)}" \
   2>&1 | tee /tmp/vercel-out.txt
 
 DEPLOY_URL=$(grep -Eo 'https://[^ ]+\.vercel\.app' /tmp/vercel-out.txt | head -1 || echo "")
