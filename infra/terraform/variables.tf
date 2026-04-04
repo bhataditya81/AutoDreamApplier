@@ -69,22 +69,6 @@ variable "cognito_domain" {
   default     = ""
 }
 
-# --- AWS credentials for Lambda (used for S3/SES calls) ---
-
-variable "aws_access_key_id" {
-  description = "AWS Access Key ID for Lambda service calls (S3, SES)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS Secret Access Key for Lambda service calls"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 # --- AI / LLM ---
 
 variable "anthropic_api_key" {
