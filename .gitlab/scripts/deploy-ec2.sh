@@ -36,6 +36,7 @@ aws s3 cp deployments/ec2/docker-compose.yml \
 cat > /tmp/ec2-remote-deploy.sh << SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
+mkdir -p /opt/autodream
 cd /opt/autodream
 
 ECR_REGISTRY="${ECR_REGISTRY}"

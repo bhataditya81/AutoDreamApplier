@@ -58,6 +58,13 @@ export function isAuthenticated(): boolean {
 // POST /api/v1/auth/login (if api-gateway has a dev login endpoint).
 // In production, replace with Cognito hosted-UI redirect.
 
+// Shape of the standard API envelope returned by the Go backend.
+interface ApiEnvelope<T> {
+  success: boolean;
+  data?: T;
+  error?: { code: string; message: string };
+}
+
 export async function devLogin(
   email: string,
   password: string
@@ -68,10 +75,11 @@ export async function devLogin(
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message ?? "Login failed");
+    const body = await res.json().catch(() => ({})) as ApiEnvelope<never>;
+    throw new Error(body.error?.message ?? "Login failed");
   }
-  const data = (await res.json()) as { token: string; user: StoredUser };
+  const body = (await res.json()) as ApiEnvelope<{ token: string; user: StoredUser }>;
+  const data = body.data!;
   setToken(data.token);
   setStoredUser(data.user);
   return data;
@@ -88,10 +96,11 @@ export async function devRegister(
     body: JSON.stringify({ email, password, fullName }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message ?? "Registration failed");
+    const body = await res.json().catch(() => ({})) as ApiEnvelope<never>;
+    throw new Error(body.error?.message ?? "Registration failed");
   }
-  const data = (await res.json()) as { token: string; user: StoredUser };
+  const body = (await res.json()) as ApiEnvelope<{ token: string; user: StoredUser }>;
+  const data = body.data!;
   setToken(data.token);
   setStoredUser(data.user);
   return data;

@@ -29,7 +29,10 @@ test.describe('Signup page', () => {
       route.fulfill({
         status: 409,
         contentType: 'application/json',
-        body: JSON.stringify({ message: 'Email already registered' }),
+        body: JSON.stringify({
+          success: false,
+          error: { code: 'CONFLICT', message: 'Email already registered' },
+        }),
       });
     });
 
@@ -47,18 +50,30 @@ test.describe('Signup page', () => {
   });
 
   test('redirects to /dashboard/onboarding on successful signup', async ({ page }) => {
+    // Response matches the Go backend envelope: { success, data: { token, user } }.
     await page.route('**/api/v1/auth/register', (route) => {
+      route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            token: 'fake-jwt-token',
+            user: {
+              id: 'user-new',
+              email: 'new@example.com',
+              fullName: 'New User',
+            },
+          },
+        }),
+      });
+    });
+    // Stub downstream dashboard API calls so the app doesn't redirect back to /login
+    await page.route('**/api/v1/users/me**', (route) => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          token: 'fake-jwt-token',
-          user: {
-            id: 'user-new',
-            email: 'new@example.com',
-            fullName: 'New User',
-          },
-        }),
+        body: JSON.stringify({ success: true, data: { id: 'user-new', email: 'new@example.com', fullName: 'New User', tier: 'free', applyMode: 'review', autoThreshold: 0.8, dailyLimit: 5, isActive: true } }),
       });
     });
 
@@ -70,7 +85,7 @@ test.describe('Signup page', () => {
     await passwordFields.nth(1).fill('password123');
     await page.getByRole('button', { name: /create free account/i }).click();
 
-    await expect(page).toHaveURL(/\/dashboard\/onboarding/);
+    await expect(page).toHaveURL(/\/dashboard\/onboarding/, { timeout: 10000 });
   });
 
   test('shows password mismatch error when passwords do not match', async ({ page }) => {

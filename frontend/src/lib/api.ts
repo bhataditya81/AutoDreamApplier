@@ -53,8 +53,14 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
-      const body = (await res.json()) as { message?: unknown; error?: unknown };
-      const msg = body.message ?? body.error;
+      const body = (await res.json()) as {
+        message?: string;
+        error?: string | { message?: string };
+      };
+      const errField = body.error;
+      const msg =
+        body.message ??
+        (typeof errField === "string" ? errField : errField?.message);
       if (typeof msg === "string" && msg) message = msg;
     } catch {
       // use status text

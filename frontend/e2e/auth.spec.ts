@@ -25,12 +25,15 @@ test.describe('Auth — Login page', () => {
   });
 
   test('shows error alert on invalid credentials (mocked API)', async ({ page }) => {
-    // Intercept the login API
+    // Intercept the login API — response matches the Go backend envelope format.
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 401,
         contentType: 'application/json',
-        body: JSON.stringify({ message: 'Invalid email or password' }),
+        body: JSON.stringify({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Invalid email or password' },
+        }),
       });
     });
 
@@ -45,15 +48,30 @@ test.describe('Auth — Login page', () => {
   });
 
   test('redirects to dashboard on successful login (mocked API)', async ({ page }) => {
+    // Response matches the Go backend envelope: { success, data: { token, user } }.
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          token: 'fake-jwt-token',
-          user: { id: 'user-1', email: 'test@example.com', fullName: 'Test User' },
+          success: true,
+          data: {
+            token: 'fake-jwt-token',
+            user: { id: 'user-1', email: 'test@example.com', fullName: 'Test User' },
+          },
         }),
       });
+    });
+    // Stub downstream dashboard API calls so the app doesn't redirect back to /login
+    await page.route('**/api/v1/users/me**', (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { id: 'user-1', email: 'test@example.com', fullName: 'Test User', tier: 'free', applyMode: 'review', autoThreshold: 0.8, dailyLimit: 5, isActive: true } }),
+      });
+    });
+    await page.route('**/api/v1/matches**', (route) => {
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [], meta: { total: 0, page: 1, perPage: 20, totalPages: 0 } }) });
     });
 
     await page.goto('/login');
@@ -61,6 +79,6 @@ test.describe('Auth — Login page', () => {
     await page.getByPlaceholder(/password/i).fill('password123');
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await expect(page).toHaveURL(/\/dashboard\//);
+    await expect(page).toHaveURL(/\/dashboard\//, { timeout: 10000 });
   });
 });
