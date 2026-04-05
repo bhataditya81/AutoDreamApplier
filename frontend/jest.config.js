@@ -1,6 +1,5 @@
-import type { Config } from 'jest';
-
-const config: Config = {
+/** @type {import('jest').Config} */
+const config = {
   preset: 'ts-jest',
   // Custom environment extends jsdom and adds Node fetch API globals for MSW v2
   testEnvironment: '<rootDir>/jest.custom-env.js',
@@ -55,4 +54,5 @@ const config: Config = {
     global: { branches: 60, functions: 60, lines: 60, statements: 60 },
   },
 };
-export default config;
+
+module.exports = config;
