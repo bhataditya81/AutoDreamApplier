@@ -15,14 +15,15 @@ jest.mock('@/components/salary/salary-benchmark-badge', () => ({
 // Radix Slot passes children as an array [false, element] when Button has a
 // loading spinner guard before children; React.Children.count sees count=2 and
 // throws. Replace Slot with a simple passthrough so asChild works in jsdom.
-const SlotMock = React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
+// Name MUST start with 'mock' so jest.mock() hoisting works without TDZ error.
+const mockSlot = React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
   const child = React.Children.toArray(children)[0];
   if (!React.isValidElement(child)) return null;
   return React.cloneElement(child as React.ReactElement, { ...props, ref });
 });
-SlotMock.displayName = 'Slot';
+mockSlot.displayName = 'Slot';
 jest.mock('@radix-ui/react-slot', () => ({
-  Slot: SlotMock,
+  Slot: mockSlot,
 }));
 
 function mockFetch(body: unknown, status = 200) {
