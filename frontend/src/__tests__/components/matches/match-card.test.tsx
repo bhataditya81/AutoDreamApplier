@@ -1,10 +1,14 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MatchCard } from '@/components/matches/match-card';
 import type { Match } from '@/lib/types';
 
 jest.mock('@/lib/auth', () => ({ getToken: jest.fn(() => 'test-token') }));
+
+// Use the manual mock in frontend/__mocks__/framer-motion.js so that
+// animation primitives (useMotionValue, animate) resolve synchronously in jsdom.
+jest.mock('framer-motion');
 
 // Stub the SalaryBenchmarkBadge so it never fires a fetch call during these tests.
 // The badge has its own dedicated test suite (salary-benchmark-badge.test.tsx).
@@ -15,16 +19,20 @@ jest.mock('@/components/salary/salary-benchmark-badge', () => ({
 // Radix Slot passes children as an array [false, element] when Button has a
 // loading spinner guard before children; React.Children.count sees count=2 and
 // throws. Replace Slot with a simple passthrough so asChild works in jsdom.
-// Name MUST start with 'mock' so jest.mock() hoisting works without TDZ error.
-const mockSlot = React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
-  const child = React.Children.toArray(children)[0];
-  if (!React.isValidElement(child)) return null;
-  return React.cloneElement(child as React.ReactElement, { ...props, ref });
+// Factory uses require() so it is self-contained after jest.mock() hoisting.
+jest.mock('@radix-ui/react-slot', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require('react') as typeof import('react');
+  const Slot = R.forwardRef(
+    ({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
+      const child = R.Children.toArray(children)[0];
+      if (!R.isValidElement(child)) return null;
+      return R.cloneElement(child as React.ReactElement, { ...props, ref });
+    }
+  );
+  Slot.displayName = 'Slot';
+  return { Slot };
 });
-mockSlot.displayName = 'Slot';
-jest.mock('@radix-ui/react-slot', () => ({
-  Slot: mockSlot,
-}));
 
 function mockFetch(body: unknown, status = 200) {
   return jest.spyOn(global, 'fetch').mockResolvedValueOnce({
@@ -77,9 +85,20 @@ describe('MatchCard', () => {
     expect(screen.getByText('TechCorp')).toBeInTheDocument();
   });
 
-  it('renders match score', () => {
+  it('renders match score', async () => {
     render(<MatchCard match={mockMatch} onUpdate={jest.fn()} />);
-    expect(screen.getByText('87%')).toBeInTheDocument();
+    // AnimatedScore drives its display via useEffect + useState (mocked animate
+    // immediately calls setVal).  In React 18 the state update may be deferred;
+    // wrapping in act + a zero-delay promise flushes all pending microtasks and
+    // scheduled state updates before we assert.
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    // RTL's getByText uses getNodeText (direct text-node children only), so
+    // "87%" split across a child <span> and a "%" text-node won't match a
+    // plain string.  Use textContent (recursive) directly on the score pill.
+    const scoreEl = document.querySelector('.tabular-nums');
+    expect(scoreEl?.textContent).toBe('87%');
   });
 
   it('renders "Remote" when isRemote is true', () => {

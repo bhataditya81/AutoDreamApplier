@@ -2,6 +2,11 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Sidebar } from '@/components/layout/sidebar';
 
+// Use the manual mock so framer-motion's motion.aside/div render as plain
+// HTML elements in jsdom (real framer-motion ships ESM-only in v11+ and
+// resolves to undefined for some exports under Jest's CJS conditions).
+jest.mock('framer-motion');
+
 jest.mock('@/lib/auth', () => ({
   getToken: jest.fn(() => 'test-token'),
   logout: jest.fn(),
@@ -67,22 +72,26 @@ describe('Sidebar', () => {
     mockFetchPrefs();
     render(<Sidebar />);
     const matchLink = screen.getByRole('link', { name: /match queue/i });
-    expect(matchLink.className).toMatch(/bg-brand-50/);
+    // The active indicator is a motion.div child with border-indigo-500; the
+    // Link itself does not change className. Assert the child exists instead.
+    expect(matchLink.querySelector('.border-indigo-500')).toBeInTheDocument();
   });
 
   it('does NOT show AUTO badge when autoApplyEnabled is false', async () => {
     mockFetchPrefs(false);
     render(<Sidebar />);
+    // The badge uses data-testid="auto-apply-badge" (no visible text).
     await waitFor(() => {
-      expect(screen.queryByText('AUTO')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('auto-apply-badge')).not.toBeInTheDocument();
     });
   });
 
   it('shows AUTO badge when autoApplyEnabled is true', async () => {
     mockFetchPrefs(true);
     render(<Sidebar />);
+    // Sidebar fetches preferences via getPreferences(); badge appears async.
     await waitFor(() =>
-      expect(screen.getByText('AUTO')).toBeInTheDocument()
+      expect(screen.getByTestId('auto-apply-badge')).toBeInTheDocument()
     );
   });
 

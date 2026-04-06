@@ -5,19 +5,27 @@ import { MatchQueue } from '@/components/matches/match-queue';
 
 jest.mock('@/lib/auth', () => ({ getToken: jest.fn(() => 'test-token') }));
 
+// Use the manual mock in frontend/__mocks__/framer-motion.js so that
+// animation primitives render synchronously in jsdom.
+jest.mock('framer-motion');
+
 // Radix Slot passes children as [false, element] when Button has a loading guard
 // before children; React.Children.count sees 2 and throws in jsdom. Use a simple
 // passthrough so asChild renders correctly in tests.
-// Name MUST start with 'mock' so jest.mock() hoisting works without TDZ error.
-const mockSlot = React.forwardRef(({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
-  const child = React.Children.toArray(children)[0];
-  if (!React.isValidElement(child)) return null;
-  return React.cloneElement(child as React.ReactElement, { ...props, ref });
+// Factory uses require() so it is self-contained after jest.mock() hoisting.
+jest.mock('@radix-ui/react-slot', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require('react') as typeof import('react');
+  const Slot = R.forwardRef(
+    ({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLElement>>, ref: React.Ref<HTMLElement>) => {
+      const child = R.Children.toArray(children)[0];
+      if (!R.isValidElement(child)) return null;
+      return R.cloneElement(child as React.ReactElement, { ...props, ref });
+    }
+  );
+  Slot.displayName = 'Slot';
+  return { Slot };
 });
-mockSlot.displayName = 'Slot';
-jest.mock('@radix-ui/react-slot', () => ({
-  Slot: mockSlot,
-}));
 
 const mockMatch = {
   id: 'match-1',
