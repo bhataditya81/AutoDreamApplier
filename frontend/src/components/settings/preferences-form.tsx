@@ -44,6 +44,63 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
   return { value: i, label: `${h}:00 ${ampm}` };
 });
 
+// ── Tag components (module-scope to avoid remounting on every keystroke) ─────
+
+function TagInput({
+  value,
+  onChange,
+  onAdd,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onAdd: () => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); onAdd(); }
+        }}
+      />
+      <Button variant="outline" size="sm" onClick={onAdd}>
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+function TagList({
+  items,
+  onRemove,
+  colorClass = "bg-brand-50 text-brand-700 border-brand-100",
+}: {
+  items: string[];
+  onRemove: (v: string) => void;
+  colorClass?: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((t) => (
+        <span
+          key={t}
+          className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${colorClass}`}
+        >
+          {t}
+          <button onClick={() => onRemove(t)} className="hover:opacity-70 transition-opacity">
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function PreferencesForm() {
   // ── Job preference state ───────────────────────────────────────────────────
   const [titles, setTitles] = useState<string[]>([]);
@@ -105,61 +162,6 @@ export function PreferencesForm() {
 
   function removeTag(item: string, list: string[], setList: (v: string[]) => void) {
     setList(list.filter((t) => t !== item));
-  }
-
-  function TagInput({
-    value,
-    onChange,
-    onAdd,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    onAdd: () => void;
-    placeholder: string;
-  }) {
-    return (
-      <div className="flex gap-2">
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); onAdd(); }
-          }}
-        />
-        <Button variant="outline" size="sm" onClick={onAdd}>
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-    );
-  }
-
-  function TagList({
-    items,
-    onRemove,
-    colorClass = "bg-brand-50 text-brand-700 border-brand-100",
-  }: {
-    items: string[];
-    onRemove: (v: string) => void;
-    colorClass?: string;
-  }) {
-    if (items.length === 0) return null;
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((t) => (
-          <span
-            key={t}
-            className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${colorClass}`}
-          >
-            {t}
-            <button onClick={() => onRemove(t)} className="hover:opacity-70 transition-opacity">
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-    );
   }
 
   // ── Auto-apply toggle (requires confirmation to enable) ────────────────────

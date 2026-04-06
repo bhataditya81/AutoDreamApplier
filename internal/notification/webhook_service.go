@@ -62,7 +62,10 @@ func (s *WebhookService) Send(ctx context.Context, cfg WebhookConfig, event Webh
 
 	if cfg.SlackURL != "" {
 		go func() {
-			if err := s.sendWithRetry(ctx, cfg.SlackURL, payload); err != nil {
+			// Detached context so retries survive after the worker's context is cancelled.
+			detached, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := s.sendWithRetry(detached, cfg.SlackURL, payload); err != nil {
 				s.log.Error().
 					Err(err).
 					Str("event", string(event)).
@@ -73,7 +76,9 @@ func (s *WebhookService) Send(ctx context.Context, cfg WebhookConfig, event Webh
 
 	if cfg.DiscordURL != "" {
 		go func() {
-			if err := s.sendWithRetry(ctx, cfg.DiscordURL, payload); err != nil {
+			detached, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := s.sendWithRetry(detached, cfg.DiscordURL, payload); err != nil {
 				s.log.Error().
 					Err(err).
 					Str("event", string(event)).

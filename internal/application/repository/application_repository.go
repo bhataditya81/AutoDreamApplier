@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -116,8 +117,10 @@ func (r *ApplicationRepository) ListForUser(ctx context.Context, userID uuid.UUI
 		where += fmt.Sprintf(" AND a.status = $%d", len(args))
 	}
 	if search != "" {
-		args = append(args, "%"+search+"%")
-		where += fmt.Sprintf(" AND (LOWER(j.title) LIKE LOWER($%d) OR LOWER(j.company) LIKE LOWER($%d))", len(args), len(args))
+		// Escape LIKE metacharacters to prevent pattern injection / full-table scans.
+		escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
+		args = append(args, "%"+escaped+"%")
+		where += fmt.Sprintf(" AND (LOWER(j.title) LIKE LOWER($%d) ESCAPE '\\' OR LOWER(j.company) LIKE LOWER($%d) ESCAPE '\\')", len(args), len(args))
 	}
 
 	var total int64
@@ -258,12 +261,14 @@ func (r *ApplicationRepository) UpdateAIOutput(ctx context.Context, appID uuid.U
 	return nil
 }
 
-// SetTailoredResumeAuth instantly maps an S3 key to the tailored output.
+// SetTailoredResumeAuth instantly maps an S3 key to the tailored output and
+// marks cover_letter_s3 as "none" (AI bypass sentinel) so the browser worker
+// does not reject the application for missing AI prep output.
 // Used exclusively when UserPreferences bypasses the AI Tailoring engine.
 func (r *ApplicationRepository) SetTailoredResumeAuth(ctx context.Context, appID uuid.UUID, tailoredS3 string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE applications
-		SET tailored_resume_s3 = $1
+		SET tailored_resume_s3 = $1, cover_letter_s3 = 'none'
 		WHERE id = $2`,
 		tailoredS3, appID,
 	)

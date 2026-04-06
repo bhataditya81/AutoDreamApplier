@@ -288,31 +288,15 @@ export async function getSalaryBenchmark(
   if (salaryMin !== undefined) qs.set('salary_min', String(salaryMin));
   if (salaryMax !== undefined) qs.set('salary_max', String(salaryMax));
 
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const res = await fetch(`/api/v1/salary/benchmark?${qs}`, { headers });
-
-  if (res.status === 404) {
-    return { benchmark: null, market_position: 'unknown' };
-  }
-
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { message?: unknown; error?: unknown };
-      const msg = body.message ?? body.error;
-      if (typeof msg === "string" && msg) message = msg;
-    } catch {
-      // use status text
+  try {
+    return await apiFetch<SalaryBenchmarkResponse>(`/salary/benchmark?${qs}`);
+  } catch (err) {
+    // 404 means no benchmark data — return a safe default instead of throwing.
+    if (err instanceof Error && err.message.startsWith("HTTP 404")) {
+      return { benchmark: null, market_position: 'unknown' };
     }
-    throw new Error(message);
+    throw err;
   }
-
-  return res.json() as Promise<SalaryBenchmarkResponse>;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -322,7 +306,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const dailyLimit = dashboard.user?.daily_limit ?? 5;
   return {
     pendingMatches: s?.pending_matches ?? 0,
-    applicationsThisWeek: s?.applied_today ?? 0,
+    applicationsThisWeek: s?.total_applications ?? 0,
     interviewsThisMonth: s?.interviews_received ?? 0,
     successRate: 0,
     appliedToday,

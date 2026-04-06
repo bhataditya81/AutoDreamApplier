@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 
@@ -44,6 +46,7 @@ type CognitoAuth struct {
 	jwksURL     string
 	keys        map[string]*rsa.PublicKey
 	keysMu      sync.RWMutex
+	refreshSF   singleflight.Group // deduplicates concurrent JWKS fetches
 	log         zerolog.Logger
 	devSecret   string // non-empty only in non-production; enables HS256 dev token validation
 }
@@ -148,8 +151,10 @@ func (ca *CognitoAuth) getPublicKey(ctx context.Context, kid string) (*rsa.Publi
 	}
 	ca.keysMu.RUnlock()
 
-	// Fetch JWKS
-	if err := ca.refreshKeys(ctx); err != nil {
+	// Fetch JWKS (deduplicated via singleflight to avoid thundering herd)
+	if _, err, _ := ca.refreshSF.Do("jwks", func() (interface{}, error) {
+		return nil, ca.refreshKeys(ctx)
+	}); err != nil {
 		return nil, err
 	}
 

@@ -107,7 +107,7 @@ func (h *Handler) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := uuid.Parse(req.UserID)
+	userID, err := h.getUserID(r, req.UserID)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return
@@ -149,7 +149,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	userID, err := h.getUserID(r, r.URL.Query().Get("user_id"))
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return
@@ -236,7 +236,7 @@ func (h *Handler) RecordOutcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := uuid.Parse(req.UserID)
+	userID, err := h.getUserID(r, req.UserID)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid user_id")
 		return

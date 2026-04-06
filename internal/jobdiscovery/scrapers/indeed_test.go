@@ -1,6 +1,7 @@
 package scrapers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -67,7 +68,7 @@ func TestEnrichATSType(t *testing.T) {
 				ApplyURL: tt.initialURL,
 			}
 
-			s.enrichATSType(job)
+			s.enrichATSType(context.Background(), job)
 
 			if job.ApplyURL != tt.expectedURL {
 				t.Errorf("enrichATSType() = %v, want %v", job.ApplyURL, tt.expectedURL)

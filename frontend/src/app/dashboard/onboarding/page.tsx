@@ -6,8 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { StepResume } from "@/components/onboarding/step-resume";
 import { StepPreferences } from "@/components/onboarding/step-preferences";
 import { StepComplete } from "@/components/onboarding/step-complete";
-import type { Resume, UserPreferences } from "@/lib/types";
-
 type Step = "resume" | "preferences" | "complete";
 
 const STEPS: Step[] = ["resume", "preferences", "complete"];
@@ -20,15 +18,10 @@ const STEP_LABELS: Record<Step, string> = {
 
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>("resume");
-  const [resume, setResume] = useState<Resume | null>(null);
-  const [preferences, setPreferences] = useState<UserPreferences | null>(null);
 
   const currentIndex = STEPS.indexOf(step);
   const totalSteps = STEPS.length;
   const progressPct = ((currentIndex + 1) / totalSteps) * 100;
-
-  void resume;
-  void preferences;
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-4">
@@ -75,16 +68,14 @@ export default function OnboardingPage() {
             >
               {step === "resume" && (
                 <StepResume
-                  onComplete={(r) => {
-                    setResume(r);
+                  onComplete={() => {
                     setStep("preferences");
                   }}
                 />
               )}
               {step === "preferences" && (
                 <StepPreferences
-                  onComplete={(p) => {
-                    setPreferences(p);
+                  onComplete={() => {
                     setStep("complete");
                   }}
                 />

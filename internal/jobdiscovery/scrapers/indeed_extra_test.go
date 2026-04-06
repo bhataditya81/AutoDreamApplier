@@ -59,7 +59,7 @@ const indeedJobHTML = `<!DOCTYPE html>
 func TestIndeedScraper_ParseHTML_ParsesJobs(t *testing.T) {
 	s := NewIndeedScraper().(*indeedScraper)
 
-	jobs, err := s.parseHTML(indeedJobHTML)
+	jobs, err := s.parseHTML(context.Background(), indeedJobHTML)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestIndeedScraper_ParseHTML_ParsesJobs(t *testing.T) {
 func TestIndeedScraper_ParseHTML_JobFields(t *testing.T) {
 	s := NewIndeedScraper().(*indeedScraper)
 
-	jobs, err := s.parseHTML(indeedJobHTML)
+	jobs, err := s.parseHTML(context.Background(), indeedJobHTML)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestIndeedScraper_ParseHTML_JobFields(t *testing.T) {
 func TestIndeedScraper_ParseHTML_RemoteFlag(t *testing.T) {
 	s := NewIndeedScraper().(*indeedScraper)
 
-	jobs, err := s.parseHTML(indeedJobHTML)
+	jobs, err := s.parseHTML(context.Background(), indeedJobHTML)
 	if err != nil {
 		t.Fatalf("parseHTML returned error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestIndeedScraper_ParseHTML_RemoteFlag(t *testing.T) {
 func TestIndeedScraper_ParseHTML_EmptyPage(t *testing.T) {
 	s := NewIndeedScraper().(*indeedScraper)
 
-	jobs, err := s.parseHTML(`<html><body><div id="empty">No results</div></body></html>`)
+	jobs, err := s.parseHTML(context.Background(), `<html><body><div id="empty">No results</div></body></html>`)
 	if err != nil {
 		t.Fatalf("parseHTML on empty page returned unexpected error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestIndeedScraper_ParseHTML_InvalidHTML(t *testing.T) {
 	// golang.org/x/net/html is lenient and won't error on garbage.
 	s := NewIndeedScraper().(*indeedScraper)
 
-	jobs, err := s.parseHTML(`<<not valid>>`)
+	jobs, err := s.parseHTML(context.Background(), `<<not valid>>`)
 	if err != nil {
 		t.Fatalf("parseHTML on invalid HTML returned unexpected error: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestIndeedScraper_ParseHTML_MissingFieldsReturnsNil(t *testing.T) {
 	</body></html>`
 
 	s := NewIndeedScraper().(*indeedScraper)
-	jobs, err := s.parseHTML(h)
+	jobs, err := s.parseHTML(context.Background(), h)
 	if err != nil {
 		t.Fatalf("parseHTML returned unexpected error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestEnrichATSType_GreenhouseURL(t *testing.T) {
 		ApplyURL: indeedSrv.URL,
 	}
 
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	// ApplyURL should now point to the greenhouse server.
 	if job.ApplyURL != greenhouseSrv.URL {
@@ -228,7 +228,7 @@ func TestEnrichATSType_LeverURL(t *testing.T) {
 		ApplyURL: indeedSrv.URL,
 	}
 
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	if job.ApplyURL != leverSrv.URL {
 		t.Errorf("expected ApplyURL=%q (lever), got %q", leverSrv.URL, job.ApplyURL)
@@ -256,7 +256,7 @@ func TestEnrichATSType_UnknownURL(t *testing.T) {
 		ApplyURL: originalURL,
 	}
 
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 
 	// When finalURL == initialURL, no update should happen.
 	if job.ApplyURL != originalURL {
@@ -272,7 +272,7 @@ func TestEnrichATSType_BadURL(t *testing.T) {
 		ApplyURL: "not-a-valid-url-%%%",
 	}
 	// Should not panic.
-	s.enrichATSType(job)
+	s.enrichATSType(context.Background(), job)
 }
 
 // ── scrapePage error paths ────────────────────────────────────────────────────

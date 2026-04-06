@@ -33,6 +33,26 @@ func (l *Limiter) key(userID, board string) string {
 	return fmt.Sprintf("ratelimit:%s:%s:%s", userID, board, date)
 }
 
+// checkAndIncrScript atomically checks the limit, increments, and sets expiry.
+// Returns the new count (post-increment). If the count already meets the limit,
+// the key is NOT incremented and the script returns -1.
+var checkAndIncrScript = redis.NewScript(`
+local key   = KEYS[1]
+local limit = tonumber(ARGV[1])
+local ttl   = tonumber(ARGV[2])
+
+local current = tonumber(redis.call("GET", key) or "0")
+if current >= limit then
+	return -1
+end
+
+local newCount = redis.call("INCR", key)
+if newCount == 1 then
+	redis.call("EXPIRE", key, ttl)
+end
+return newCount
+`)
+
 // Check returns whether the user can apply on this board today.
 // Returns (allowed, currentCount, dailyLimit, error).
 func (l *Limiter) Check(ctx context.Context, userID, board string) (bool, int, int, error) {
@@ -49,25 +69,26 @@ func (l *Limiter) Check(ctx context.Context, userID, board string) (bool, int, i
 	return count < limit, count, limit, nil
 }
 
-// Increment records an application for rate limiting.
-// Returns the new count.
+// Increment atomically checks the limit and records an application.
+// Returns the new count. Returns an error if the limit has been reached.
 func (l *Limiter) Increment(ctx context.Context, userID, board string) (int, error) {
 	key := l.key(userID, board)
+	limit := l.getLimit(board)
 
-	pipe := l.rdb.Pipeline()
-	incr := pipe.Incr(ctx, key)
-
-	// Set expiry to end of day UTC + 1 hour buffer
+	// TTL = seconds until end of day UTC + 1 hour buffer
 	now := time.Now().UTC()
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, time.UTC)
-	ttl := time.Until(endOfDay) + time.Hour
-	pipe.Expire(ctx, key, ttl)
+	ttlSec := int(time.Until(endOfDay)/time.Second) + 3600
 
-	if _, err := pipe.Exec(ctx); err != nil {
+	result, err := checkAndIncrScript.Run(ctx, l.rdb, []string{key}, limit, ttlSec).Int()
+	if err != nil {
 		return 0, fmt.Errorf("increment rate limit: %w", err)
 	}
+	if result == -1 {
+		return limit, fmt.Errorf("rate limit reached (%d/%d)", limit, limit)
+	}
 
-	return int(incr.Val()), nil
+	return result, nil
 }
 
 // GetDailyUsage returns the user's application count across all boards for today.

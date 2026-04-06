@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
@@ -30,7 +31,7 @@ import (
 type indeedScraper struct {
 	client     *http.Client
 	userAgents []string
-	uaIndex    int
+	uaIndex    atomic.Int64
 }
 
 // NewIndeedScraper creates a new Indeed scraper.
@@ -136,9 +137,9 @@ func (s *indeedScraper) scrapePage(ctx context.Context, pageURL string) ([]*mode
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// Rotate User-Agent
-	s.uaIndex = (s.uaIndex + 1) % len(s.userAgents)
-	req.Header.Set("User-Agent", s.userAgents[s.uaIndex])
+	// Rotate User-Agent (atomic to avoid data races)
+	idx := int(s.uaIndex.Add(1)) % len(s.userAgents)
+	req.Header.Set("User-Agent", s.userAgents[idx])
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Cache-Control", "no-cache")
@@ -161,34 +162,34 @@ func (s *indeedScraper) scrapePage(ctx context.Context, pageURL string) ([]*mode
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	return s.parseHTML(string(body))
+	return s.parseHTML(ctx, string(body))
 }
 
 // parseHTML extracts job cards from the Indeed results HTML.
 // Indeed renders job cards as <div data-jk="..."> or <article> elements.
-func (s *indeedScraper) parseHTML(htmlContent string) ([]*models.ScrapedJob, error) {
+func (s *indeedScraper) parseHTML(ctx context.Context, htmlContent string) ([]*models.ScrapedJob, error) {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
 	var jobs []*models.ScrapedJob
-	s.walkNode(doc, &jobs)
+	s.walkNode(ctx, doc, &jobs)
 	return jobs, nil
 }
 
 // walkNode recursively walks the HTML AST, collecting job cards.
-func (s *indeedScraper) walkNode(n *html.Node, jobs *[]*models.ScrapedJob) {
+func (s *indeedScraper) walkNode(ctx context.Context, n *html.Node, jobs *[]*models.ScrapedJob) {
 	if n.Type == html.ElementNode {
 		// Indeed job cards: <div class="job_seen_beacon"> or data-jk attribute
 		if s.isJobCard(n) {
-			if job := s.extractJobCard(n); job != nil {
+			if job := s.extractJobCard(ctx, n); job != nil {
 				*jobs = append(*jobs, job)
 			}
 		}
 	}
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		s.walkNode(child, jobs)
+		s.walkNode(ctx, child, jobs)
 	}
 }
 
@@ -206,7 +207,7 @@ func (s *indeedScraper) isJobCard(n *html.Node) bool {
 }
 
 // extractJobCard extracts a ScrapedJob from a job card node.
-func (s *indeedScraper) extractJobCard(n *html.Node) *models.ScrapedJob {
+func (s *indeedScraper) extractJobCard(ctx context.Context, n *html.Node) *models.ScrapedJob {
 	job := &models.ScrapedJob{
 		Source:         models.SourceIndeed,
 		SalaryCurrency: "USD",
@@ -234,7 +235,7 @@ func (s *indeedScraper) extractJobCard(n *html.Node) *models.ScrapedJob {
 	}
 
 	// Try to resolve the true ATS URL by following the redirect
-	s.enrichATSType(job)
+	s.enrichATSType(ctx, job)
 
 	return job
 }
@@ -284,7 +285,7 @@ func (s *indeedScraper) extractFieldFromNode(n *html.Node, job *models.ScrapedJo
 
 // enrichATSType attempts to follow the Indeed apply link redirect to find the true ApplyURL
 // and infers the ATSType from it.
-func (s *indeedScraper) enrichATSType(job *models.ScrapedJob) {
+func (s *indeedScraper) enrichATSType(ctx context.Context, job *models.ScrapedJob) {
 	if job.ApplyURL == "" {
 		return
 	}
@@ -303,12 +304,12 @@ func (s *indeedScraper) enrichATSType(job *models.ScrapedJob) {
 		},
 	}
 
-	req, err := http.NewRequest(http.MethodGet, job.ApplyURL, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.ApplyURL, http.NoBody)
 	if err != nil {
 		return
 	}
-	s.uaIndex = (s.uaIndex + 1) % len(s.userAgents)
-	req.Header.Set("User-Agent", s.userAgents[s.uaIndex])
+	idx := int(s.uaIndex.Add(1)) % len(s.userAgents)
+	req.Header.Set("User-Agent", s.userAgents[idx])
 
 	resp, err := client.Do(req)
 	if err != nil {

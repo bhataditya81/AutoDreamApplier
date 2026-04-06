@@ -104,6 +104,8 @@ func (w *BrowserApplyWorker) Work(ctx context.Context, job *river.Job[tasks.Brow
 		return w.failApp(ctx, p.ApplicationID,
 			"AI prep output missing: tailored resume or cover letter S3 key is empty")
 	}
+	// "none" is the sentinel set by SetTailoredResumeAuth when AI tailoring is bypassed.
+	aiBypass := app.CoverLetterS3 == "none"
 
 	// ── Load job & user ────────────────────────────────────────────────────────
 	job2, err := w.appRepo.GetJob(ctx, p.JobID)
@@ -137,9 +139,14 @@ func (w *BrowserApplyWorker) Work(ctx context.Context, job *river.Job[tasks.Brow
 	if err != nil {
 		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("fetch tailored resume from S3: %v", err))
 	}
-	coverText, err := w.s3Client.GetText(ctx, w.buckets.Resumes, app.CoverLetterS3)
-	if err != nil {
-		return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("fetch cover letter from S3: %v", err))
+	var coverText string
+	if aiBypass {
+		coverText = "" // No cover letter when AI tailoring is bypassed
+	} else {
+		coverText, err = w.s3Client.GetText(ctx, w.buckets.Resumes, app.CoverLetterS3)
+		if err != nil {
+			return w.failApp(ctx, p.ApplicationID, fmt.Sprintf("fetch cover letter from S3: %v", err))
+		}
 	}
 
 	// ── Deserialize pre-answered form questions ────────────────────────────────

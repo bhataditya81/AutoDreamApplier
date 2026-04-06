@@ -45,6 +45,7 @@ function AnimatedScore({ value }: { value: number }) {
 
 export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCardProps) {
   const [loading, setLoading] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Match quality feedback (thumbs up/down — separate from approve/reject) ──
   const [feedback, setFeedback] = useState<"thumbs_up" | "thumbs_down" | undefined>(
@@ -69,11 +70,13 @@ export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCa
 
   async function handleApprove() {
     setLoading("approve");
+    setError(null);
     try {
       const updated = await updateMatchStatus(match.id, "approved", "thumbs_up");
       onUpdate(updated);
     } catch (e) {
       console.error("Failed to approve match", e);
+      setError(e instanceof Error ? e.message : "Failed to approve");
     } finally {
       setLoading(null);
     }
@@ -81,11 +84,13 @@ export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCa
 
   async function handleReject() {
     setLoading("reject");
+    setError(null);
     try {
       const updated = await updateMatchStatus(match.id, "rejected", "thumbs_down");
       onUpdate(updated);
     } catch (e) {
       console.error("Failed to reject match", e);
+      setError(e instanceof Error ? e.message : "Failed to reject");
     } finally {
       setLoading(null);
     }
@@ -258,6 +263,11 @@ export function MatchCard({ match, onUpdate, selected, onToggleSelect }: MatchCa
               />
             </motion.button>
           </div>
+
+          {/* Error banner */}
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 rounded-md px-2.5 py-1.5 mb-2">{error}</p>
+          )}
 
           {/* Badges */}
           <div className="flex flex-wrap gap-1.5">

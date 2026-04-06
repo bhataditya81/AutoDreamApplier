@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -10,6 +12,10 @@ import (
 	appRepo "github.com/bhata/AutoDreamApplier/internal/application/repository"
 	"github.com/bhata/AutoDreamApplier/internal/notification"
 )
+
+// digestStateFile is the filename used to persist the last-sent timestamp
+// across process restarts. Stored in the OS temp directory.
+const digestStateFile = "autodreamapplier_digest_last_sent"
 
 const (
 	// digestCheckInterval is how often the scheduler wakes up to check whether
@@ -52,11 +58,14 @@ func NewDigestScheduler(
 	n *notification.Client,
 	log zerolog.Logger,
 ) *DigestScheduler {
-	return &DigestScheduler{
+	ds := &DigestScheduler{
 		appRepo:  ar,
 		notifier: n,
 		log:      log.With().Str("component", "digest_scheduler").Logger(),
 	}
+	// Restore lastSent from disk so a process restart doesn't re-send.
+	ds.loadLastSent()
+	return ds
 }
 
 // Run starts the digest scheduler loop. It blocks until ctx is cancelled.
@@ -147,6 +156,7 @@ func (s *DigestScheduler) dispatch(ctx context.Context, now time.Time) {
 	// Record lastSent regardless of partial failures so we don't retry
 	// within the same window for the users that already received it.
 	s.lastSent = now
+	s.persistLastSent()
 
 	s.log.Info().
 		Int("sent", sent).
@@ -189,4 +199,32 @@ func (s *DigestScheduler) sendDigest(
 		return fmt.Errorf("SendWeeklyDigest: %w", err)
 	}
 	return nil
+}
+
+// ── Persistence helpers ─────────────────────────────────────────────────────
+
+func digestStatePath() string {
+	return filepath.Join(os.TempDir(), digestStateFile)
+}
+
+// loadLastSent restores the lastSent timestamp from disk.
+func (s *DigestScheduler) loadLastSent() {
+	data, err := os.ReadFile(digestStatePath())
+	if err != nil {
+		return // file doesn't exist on first run
+	}
+	t, err := time.Parse(time.RFC3339, string(data))
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to parse digest state file; will re-send if in window")
+		return
+	}
+	s.lastSent = t
+	s.log.Info().Time("last_sent", t).Msg("restored digest lastSent from disk")
+}
+
+// persistLastSent writes the lastSent timestamp to disk.
+func (s *DigestScheduler) persistLastSent() {
+	if err := os.WriteFile(digestStatePath(), []byte(s.lastSent.Format(time.RFC3339)), 0644); err != nil {
+		s.log.Error().Err(err).Msg("failed to persist digest lastSent to disk")
+	}
 }

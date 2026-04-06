@@ -53,8 +53,8 @@ export function OutcomeEntryModal({
     setError(null);
     try {
       await updateApplicationOutcome(application.id, selected, notes.trim() || undefined);
-      onSaved();
       onClose();
+      onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {

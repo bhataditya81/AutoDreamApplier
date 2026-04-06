@@ -252,8 +252,8 @@ export function ResumeList() {
 
               {/* Stats row */}
               {resume.total_applications > 0 && (
-                <div className="flex items-center gap-3 pl-13 ml-13 text-xs text-gray-500">
-                  <span className="ml-13">{resume.total_applications} app{resume.total_applications !== 1 ? "s" : ""}</span>
+                <div className="flex items-center gap-3 pl-[52px] text-xs text-gray-500">
+                  <span>{resume.total_applications} app{resume.total_applications !== 1 ? "s" : ""}</span>
                   <span className="text-gray-300">·</span>
                   <span>{resume.total_interviews} interview{resume.total_interviews !== 1 ? "s" : ""}</span>
                   <span className="text-gray-300">·</span>

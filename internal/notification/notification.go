@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"html/template"
 	"time"
 
@@ -168,7 +169,8 @@ func (c *Client) SendContactNotification(ctx context.Context, name, fromEmail, s
 	}
 	body := fmt.Sprintf(
 		"<p><b>From:</b> %s &lt;%s&gt;</p><p><b>Subject:</b> %s</p><p>%s</p>",
-		name, fromEmail, subject, message,
+		html.EscapeString(name), html.EscapeString(fromEmail),
+		html.EscapeString(subject), html.EscapeString(message),
 	)
 	input := &sesv2.SendEmailInput{
 		FromEmailAddress: aws.String(c.fromEmail),

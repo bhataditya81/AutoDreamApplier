@@ -155,7 +155,10 @@ export default function AnalyticsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const initialRange = (Number(searchParams.get("range")) || 30) as RangeDays;
+  const rawRange = Number(searchParams.get("range"));
+  const initialRange: RangeDays = (RANGE_OPTIONS as number[]).includes(rawRange)
+    ? (rawRange as RangeDays)
+    : 30;
   const [rangeDays, setRangeDays] = useState<RangeDays>(initialRange);
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
