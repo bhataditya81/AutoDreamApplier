@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -313,6 +314,10 @@ func (h *UserHandler) SetPrimaryResume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.SetPrimaryResume(r.Context(), user.ID, resumeID); err != nil {
+		if errors.Is(err, repository.ErrResumeNotFound) {
+			response.NotFound(w, "resume not found")
+			return
+		}
 		h.log.Error().Err(err).Msg("error setting primary resume")
 		response.InternalError(w, "failed to set primary resume")
 		return

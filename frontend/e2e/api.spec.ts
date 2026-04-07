@@ -4,8 +4,7 @@
  * These tests hit REAL endpoints on the live Lambda behind API Gateway.
  * No mocking of API calls except for explicit error-state tests.
  *
- * API Base: https://xvjoo9xer5.execute-api.us-east-1.amazonaws.com
- * Frontend:  https://autodreamapplier.vercel.app  (proxies /api/v1 → Lambda)
+ * API Base: https://autodreamapplier.vercel.app  (proxies /api/v1 → Lambda)
  *
  * Run against prod:
  *   npx playwright test e2e/api.spec.ts --config=playwright.prod.config.ts
@@ -22,8 +21,8 @@ const E2E_USER = {
   fullName: 'E2E Test User',
 };
 
-/** Direct Lambda base — bypass Vercel rewrite for pure API tests */
-const BASE = 'https://xvjoo9xer5.execute-api.us-east-1.amazonaws.com';
+/** API base — routed through the Vercel deployment proxy */
+const BASE = 'https://autodreamapplier.vercel.app';
 
 /** Non-existent UUID — safe for 404 tests */
 const NULL_UUID = '00000000-0000-0000-0000-000000000000';
@@ -172,8 +171,8 @@ test.describe('API — User profile endpoints', () => {
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body).toHaveProperty('email');
-      expect(body.email).toBe(E2E_USER.email);
+      expect(body.data ?? body).toHaveProperty('email');
+      expect((body.data ?? body).email).toBe(E2E_USER.email);
     } finally {
       await ctx.dispose();
     }
@@ -195,7 +194,7 @@ test.describe('API — User profile endpoints', () => {
     const ctx = await authedCtx(token);
     try {
       const newName = `E2E Test User ${Date.now()}`;
-      const res = await ctx.patch('/api/v1/users/me', {
+      const res = await ctx.put('/api/v1/users/me', {
         data: { fullName: newName },
       });
       expect(res.status()).toBe(200);
@@ -216,7 +215,7 @@ test.describe('API — User profile endpoints', () => {
   test('PATCH /users/me returns 401 without a token', async () => {
     const ctx = await pwRequest.newContext({ baseURL: BASE });
     try {
-      const res = await ctx.patch('/api/v1/users/me', {
+      const res = await ctx.put('/api/v1/users/me', {
         data: { fullName: 'Hacker' },
       });
       expect(res.status()).toBe(401);
@@ -309,8 +308,9 @@ test.describe('API — Preferences endpoints', () => {
       const getRes = await ctx.get('/api/v1/users/me/preferences');
       expect(getRes.status()).toBe(200);
       const saved = await getRes.json();
-      // Accept snake_case or camelCase keys from the backend
-      const remotePref = saved?.remotePref ?? saved?.remote_pref;
+      // Accept snake_case or camelCase keys from the backend; unwrap envelope if present
+      const saved_ = saved?.data ?? saved;
+      const remotePref = saved_?.remotePref ?? saved_?.remote_pref;
       expect(remotePref).toBe('remote');
     } finally {
       await ctx.dispose();
@@ -363,7 +363,7 @@ test.describe('API — Resume endpoints', () => {
       const res = await ctx.get('/api/v1/users/me/resumes');
       expect(res.status()).toBe(200);
       const body = await res.json();
-      expect(Array.isArray(body)).toBe(true);
+      expect(Array.isArray(body?.data ?? body)).toBe(true);
     } finally {
       await ctx.dispose();
     }
@@ -406,8 +406,9 @@ test.describe('API — Resume endpoints', () => {
       expect([200, 201]).toContain(res.status());
 
       const body = await res.json();
-      expect(body).toHaveProperty('id');
-      createdResumeIds.push(body.id as string);
+      const resumeData = body?.data ?? body;
+      expect(resumeData).toHaveProperty('id');
+      createdResumeIds.push(resumeData.id as string);
     } finally {
       await ctx.dispose();
     }
@@ -1174,11 +1175,11 @@ test.describe('User journey — Full onboarding flow', () => {
       });
       expect(meRes.status()).toBe(200);
       const meBody = await meRes.json();
-      expect(meBody.email).toBe(E2E_USER.email);
+      expect((meBody.data ?? meBody).email).toBe(E2E_USER.email);
 
       // Step 4: Update profile
       const updatedName = `E2E Journey User ${Date.now()}`;
-      const patchRes = await ctx.patch('/api/v1/users/me', {
+      const patchRes = await ctx.put('/api/v1/users/me', {
         headers: { Authorization: `Bearer ${token}` },
         data:    { fullName: updatedName },
       });
@@ -1190,7 +1191,8 @@ test.describe('User journey — Full onboarding flow', () => {
       });
       expect(verifyRes.status()).toBe(200);
       const verifyBody = await verifyRes.json();
-      expect(verifyBody.fullName ?? verifyBody.full_name).toBe(updatedName);
+      const vb = verifyBody.data ?? verifyBody;
+      expect(vb.fullName ?? vb.full_name).toBe(updatedName);
     } finally {
       await ctx.dispose();
     }
@@ -1218,10 +1220,11 @@ test.describe('User journey — Full onboarding flow', () => {
       expect(getRes.status()).toBe(200);
       const saved = await getRes.json();
 
-      const remotePref = saved?.remotePref ?? saved?.remote_pref;
+      const saved_ = saved?.data ?? saved;
+      const remotePref = saved_?.remotePref ?? saved_?.remote_pref;
       expect(remotePref).toBe('remote');
 
-      const titles: string[] = saved?.targetTitles ?? saved?.target_titles ?? [];
+      const titles: string[] = saved_?.targetTitles ?? saved_?.target_titles ?? [];
       expect(titles).toContain('Staff Engineer');
     } finally {
       await ctx.dispose();
@@ -1243,7 +1246,8 @@ test.describe('User journey — Resume lifecycle', () => {
       // Step 1: Count resumes before upload
       const beforeRes = await ctx.get('/api/v1/users/me/resumes');
       expect(beforeRes.status()).toBe(200);
-      const beforeList: Array<{ id: string }> = await beforeRes.json();
+      const beforeRaw = await beforeRes.json();
+      const beforeList: Array<{ id: string }> = beforeRaw?.data ?? beforeRaw;
       const countBefore = beforeList.length;
 
       // Step 2: Upload a resume
@@ -1262,13 +1266,15 @@ test.describe('User journey — Resume lifecycle', () => {
       });
       expect([200, 201]).toContain(uploadRes.status());
       const uploaded = await uploadRes.json();
-      uploadedId = uploaded.id as string;
+      const uploadedData = uploaded?.data ?? uploaded;
+      uploadedId = uploadedData.id as string;
       expect(typeof uploadedId).toBe('string');
 
       // Step 3: List — count should have increased by 1
       const afterUploadRes = await ctx.get('/api/v1/users/me/resumes');
       expect(afterUploadRes.status()).toBe(200);
-      const afterUploadList: Array<{ id: string }> = await afterUploadRes.json();
+      const afterUploadRaw = await afterUploadRes.json();
+      const afterUploadList: Array<{ id: string }> = afterUploadRaw?.data ?? afterUploadRaw;
       expect(afterUploadList.length).toBe(countBefore + 1);
       expect(afterUploadList.some((r) => r.id === uploadedId)).toBe(true);
 
@@ -1284,7 +1290,8 @@ test.describe('User journey — Resume lifecycle', () => {
       // Step 6: List again — count should be back to original
       const afterDeleteRes = await ctx.get('/api/v1/users/me/resumes');
       expect(afterDeleteRes.status()).toBe(200);
-      const afterDeleteList: Array<{ id: string }> = await afterDeleteRes.json();
+      const afterDeleteRaw = await afterDeleteRes.json();
+      const afterDeleteList: Array<{ id: string }> = afterDeleteRaw?.data ?? afterDeleteRaw;
       expect(afterDeleteList.length).toBe(countBefore);
     } finally {
       // Cleanup if delete didn't run (test failed mid-way)

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 
@@ -12,6 +13,9 @@ import (
 
 	"github.com/bhata/AutoDreamApplier/internal/user/models"
 )
+
+// ErrResumeNotFound is returned when a resume does not exist or belongs to a different user.
+var ErrResumeNotFound = errors.New("resume not found")
 
 // UserRepository handles user database operations.
 type UserRepository struct {
@@ -421,11 +425,15 @@ func (r *UserRepository) SetPrimaryResume(ctx context.Context, userID, resumeID 
 	}
 
 	// Set the chosen one
-	if _, err := tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE resumes SET is_primary = true WHERE id = $1 AND user_id = $2`,
 		resumeID, userID,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("setting primary resume: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrResumeNotFound
 	}
 
 	return tx.Commit(ctx)
