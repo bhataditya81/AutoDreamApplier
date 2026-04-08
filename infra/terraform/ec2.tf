@@ -129,7 +129,9 @@ resource "aws_instance" "browser_pool" {
     # Don't replace instance on AMI update — use deploy.sh instead.
     # subnet_id: tolist() ordering is non-deterministic; ignore to prevent
     # accidental replacement when the instance is imported into state.
-    ignore_changes = [ami, user_data, subnet_id]
+    # key_name: tls_private_key regenerates on fresh state; ignore to prevent
+    # instance replacement when the key pair resource drifts.
+    ignore_changes = [ami, user_data, subnet_id, key_name]
   }
 }
 

@@ -84,17 +84,17 @@ aws s3 cp /tmp/ec2-remote-deploy.sh \
   --region "${AWS_REGION}"
 
 # ── Wait for SSM agent to be online ──────────────────────────────────────────
-echo "Waiting for SSM agent to be online (up to 5 min)..."
-for i in $(seq 1 20); do
+echo "Waiting for SSM agent to be online (up to 15 min)..."
+for i in $(seq 1 60); do
   SSM_STATUS=$(aws ssm describe-instance-information \
     --filters "Key=InstanceIds,Values=${INSTANCE_ID}" \
     --query 'InstanceInformationList[0].PingStatus' \
     --output text --region "${AWS_REGION}" 2>/dev/null || echo "Unknown")
   [ "${SSM_STATUS}" = "Online" ] && echo "SSM agent online." && break
-  echo "  SSM status: ${SSM_STATUS} (${i}/20) — waiting 15s..."
+  echo "  SSM status: ${SSM_STATUS} (${i}/60) — waiting 15s..."
   sleep 15
-  if [ "${i}" = "20" ]; then
-    echo "ERROR: SSM agent did not come online within 5 minutes."
+  if [ "${i}" = "60" ]; then
+    echo "ERROR: SSM agent did not come online within 15 minutes."
     echo "  Ensure the EC2 IAM role has AmazonSSMManagedInstanceCore policy attached."
     exit 1
   fi
