@@ -43,13 +43,18 @@ ECR_REGISTRY="${ECR_REGISTRY}"
 ECR_PREFIX="${ECR_PREFIX}"
 IMAGE_TAG="${IMAGE_TAG}"
 
-# Wait for Docker (setup.sh may still be running on a fresh instance)
-for i in \$(seq 1 20); do
-  docker --version 2>/dev/null && break
-  echo "  Waiting for Docker (\${i}/20)..."
+# Wait for Phase 2 setup to finish (Docker + tooling installed in background).
+# setup.sh writes /var/lib/autodream-setup-complete when done.
+for i in \$(seq 1 40); do
+  [ -f /var/lib/autodream-setup-complete ] && docker --version 2>/dev/null && break
+  echo "  Waiting for EC2 setup Phase 2 (\${i}/40 — up to 10 min)..."
   sleep 15
 done
-docker --version || { echo "ERROR: Docker not available after 5 min."; exit 1; }
+if ! docker --version 2>/dev/null; then
+  echo "ERROR: Docker not available after 10 min. Phase 2 log:"
+  cat /var/log/autodream-setup-phase2.log 2>/dev/null || echo "(no log yet)"
+  exit 1
+fi
 
 # Fetch latest compose file from S3
 aws s3 cp "s3://${S3_DEPLOY_PREFIX}/docker-compose.yml" \
@@ -84,18 +89,20 @@ aws s3 cp /tmp/ec2-remote-deploy.sh \
   --region "${AWS_REGION}"
 
 # ── Wait for SSM agent to be online ──────────────────────────────────────────
-echo "Waiting for SSM agent to be online (up to 15 min)..."
-for i in $(seq 1 60); do
+# Phase 1 of setup.sh starts SSM before any package installs, so it should
+# register within 90 seconds of instance boot. Allow 3 min for safety.
+echo "Waiting for SSM agent to be online (up to 3 min)..."
+for i in $(seq 1 12); do
   SSM_STATUS=$(aws ssm describe-instance-information \
     --filters "Key=InstanceIds,Values=${INSTANCE_ID}" \
     --query 'InstanceInformationList[0].PingStatus' \
     --output text --region "${AWS_REGION}" 2>/dev/null || echo "Unknown")
   [ "${SSM_STATUS}" = "Online" ] && echo "SSM agent online." && break
-  echo "  SSM status: ${SSM_STATUS} (${i}/60) — waiting 15s..."
+  echo "  SSM status: ${SSM_STATUS} (${i}/12) — waiting 15s..."
   sleep 15
-  if [ "${i}" = "60" ]; then
-    echo "ERROR: SSM agent did not come online within 15 minutes."
-    echo "  Ensure the EC2 IAM role has AmazonSSMManagedInstanceCore policy attached."
+  if [ "${i}" = "12" ]; then
+    echo "ERROR: SSM agent did not come online within 3 minutes."
+    echo "  Check: IAM role has AmazonSSMManagedInstanceCore, instance has internet access."
     exit 1
   fi
 done

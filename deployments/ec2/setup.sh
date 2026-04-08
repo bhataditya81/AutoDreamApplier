@@ -1,63 +1,37 @@
 #!/bin/bash
 # EC2 bootstrap — runs once via user_data on first boot.
-# AL2023 ARM64 (t4g.nano). SSM agent is pre-installed; we must NOT let
-# "dnf update -y" kill the running agent before it has registered.
+# AL2023 ARM64 (t4g.nano).
+#
+# Boot-to-SSM-ready target: < 90 seconds
+# Strategy: Phase 1 (SSM + scripts + systemd) runs synchronously.
+#           Phase 2 (Docker, docker-compose, aws-cli, security patches)
+#           runs in the background so the CI pipeline can reach the instance
+#           while setup continues.
 set -euo pipefail
 
-# ── SSM agent: ensure running BEFORE any dnf operations ──────────────────────
-# AL2023 starts amazon-ssm-agent automatically, but guarantee it here so the
-# CI deploy pipeline can reach this instance via SSM Run Command as soon as
-# the instance is healthy — even while the rest of setup is still running.
+# ══════════════════════════════════════════════════════════════════════════════
+# PHASE 1 — Synchronous: everything SSM needs to register (~30–60 s)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── SSM agent ────────────────────────────────────────────────────────────────
+# AL2023 starts amazon-ssm-agent by default; guarantee it here.
 systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent 2>/dev/null || true
-systemctl is-active amazon-ssm-agent && echo "SSM agent running." || echo "WARN: SSM agent not active yet."
 
-# ── System update (exclude SSM agent to avoid killing the running service) ───
-# Updating amazon-ssm-agent via dnf stops the service and the new package
-# may take several seconds to auto-restart — during which SSM shows Offline.
-# We re-install/upgrade it explicitly after the main update below.
-dnf update -y --exclude='amazon-ssm-agent*'
-
-# ── Re-upgrade SSM agent cleanly so it restarts gracefully ───────────────────
-# This updates the package then immediately restarts the service.
-dnf upgrade -y amazon-ssm-agent 2>/dev/null || true
-systemctl restart amazon-ssm-agent 2>/dev/null || true
-
-# ── Install Docker ────────────────────────────────────────────────────────────
-dnf install -y docker
-systemctl enable docker
-systemctl start docker
-
-# ── Install Docker Compose plugin ────────────────────────────────────────────
-mkdir -p /usr/local/lib/docker/cli-plugins
-curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose
-chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-# Add ec2-user to docker group
-usermod -aG docker ec2-user
-
-# ── Install AWS CLI (for ECR login, SSM parameter reads) ─────────────────────
-dnf install -y aws-cli
-
-# ── Create app directory ──────────────────────────────────────────────────────
+# ── App directory + scripts ───────────────────────────────────────────────────
 mkdir -p /opt/autodream
 chmod 755 /opt/autodream
 
-# Create env file placeholder (populated by update-env.sh on startup)
 cat > /opt/autodream/.env << 'ENVEOF'
 # Populated by /opt/autodream/update-env.sh on startup
 ENVEOF
 chmod 600 /opt/autodream/.env
 
-# ── Pull env from SSM and write to .env file ─────────────────────────────────
-# AWS credentials come from the EC2 IAM instance profile — no static keys.
 # Uses IMDSv2 (http_tokens=required) to fetch region from instance metadata.
 cat > /opt/autodream/update-env.sh << 'SCRIPTEOF'
 #!/bin/bash
 set -euo pipefail
 
-# IMDSv2: fetch a short-lived token, then use it to get the region.
 IMDS_TOKEN=$(curl -sf --retry 3 --connect-timeout 5 \
   -X PUT "http://169.254.169.254/latest/api/token" \
   -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
@@ -93,7 +67,7 @@ chmod 600 /opt/autodream/.env
 SCRIPTEOF
 chmod +x /opt/autodream/update-env.sh
 
-# ── systemd service for autodream ─────────────────────────────────────────────
+# ── systemd service for autodream ────────────────────────────────────────────
 cat > /etc/systemd/system/autodream.service << 'SERVICEEOF'
 [Unit]
 Description=AutoDreamApplier Services
@@ -116,11 +90,50 @@ WantedBy=multi-user.target
 SERVICEEOF
 
 systemctl daemon-reload
-# Note: autodream.service is NOT enabled on first boot — the deploy pipeline
-# writes the compose file and starts containers. Enable after first deploy.
+# Note: autodream.service is NOT enabled here — the CI deploy pipeline
+# writes docker-compose.yml and enables/starts the service on first deploy.
 
-# ── Final SSM agent status check ─────────────────────────────────────────────
-systemctl is-active amazon-ssm-agent \
-  && echo "EC2 setup complete. SSM agent is active." \
-  || { echo "WARN: SSM agent not active at end of setup — attempting restart."; \
-       systemctl restart amazon-ssm-agent || true; }
+echo "[Phase 1 complete] SSM agent running; scripts and systemd unit written."
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PHASE 2 — Background: Docker + tooling + security patches (~5–10 min)
+# CI pipeline can already use SSM while this runs in the background.
+# The deploy pipeline checks for Docker readiness before starting containers.
+# ══════════════════════════════════════════════════════════════════════════════
+(
+  set -euo pipefail
+  LOG=/var/log/autodream-setup-phase2.log
+  exec > >(tee -a "$LOG") 2>&1
+  echo "[$(date -u +%H:%M:%SZ)] Phase 2 starting..."
+
+  # Security patches only (fast — no full package upgrade)
+  dnf upgrade -y --security 2>/dev/null || true
+
+  # Docker
+  dnf install -y docker
+  systemctl enable docker
+  systemctl start docker
+
+  # Docker Compose plugin (aarch64 for t4g)
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+  # Add ec2-user to docker group
+  usermod -aG docker ec2-user
+
+  # AWS CLI
+  dnf install -y aws-cli
+
+  # Nightly security update cron (avoids long boot times on future reboots)
+  echo "0 3 * * * root dnf upgrade -y --security >> /var/log/dnf-security-cron.log 2>&1" \
+    > /etc/cron.d/autodream-security-updates
+
+  # Signal completion so the CI deploy pipeline can proceed
+  touch /var/lib/autodream-setup-complete
+  echo "[$(date -u +%H:%M:%SZ)] Phase 2 complete. Docker and tooling ready."
+) &
+
+disown
+echo "[setup.sh] Phase 2 running in background (PID $!). Boot script exiting."
