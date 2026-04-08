@@ -1,15 +1,34 @@
 #!/bin/bash
+# EC2 bootstrap — runs once via user_data on first boot.
+# AL2023 ARM64 (t4g.nano). SSM agent is pre-installed; we must NOT let
+# "dnf update -y" kill the running agent before it has registered.
 set -euo pipefail
 
-# Update system
-dnf update -y
+# ── SSM agent: ensure running BEFORE any dnf operations ──────────────────────
+# AL2023 starts amazon-ssm-agent automatically, but guarantee it here so the
+# CI deploy pipeline can reach this instance via SSM Run Command as soon as
+# the instance is healthy — even while the rest of setup is still running.
+systemctl enable amazon-ssm-agent
+systemctl start amazon-ssm-agent 2>/dev/null || true
+systemctl is-active amazon-ssm-agent && echo "SSM agent running." || echo "WARN: SSM agent not active yet."
 
-# Install Docker
+# ── System update (exclude SSM agent to avoid killing the running service) ───
+# Updating amazon-ssm-agent via dnf stops the service and the new package
+# may take several seconds to auto-restart — during which SSM shows Offline.
+# We re-install/upgrade it explicitly after the main update below.
+dnf update -y --exclude='amazon-ssm-agent*'
+
+# ── Re-upgrade SSM agent cleanly so it restarts gracefully ───────────────────
+# This updates the package then immediately restarts the service.
+dnf upgrade -y amazon-ssm-agent 2>/dev/null || true
+systemctl restart amazon-ssm-agent 2>/dev/null || true
+
+# ── Install Docker ────────────────────────────────────────────────────────────
 dnf install -y docker
 systemctl enable docker
 systemctl start docker
 
-# Install Docker Compose plugin
+# ── Install Docker Compose plugin ────────────────────────────────────────────
 mkdir -p /usr/local/lib/docker/cli-plugins
 curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
     -o /usr/local/lib/docker/cli-plugins/docker-compose
@@ -18,14 +37,10 @@ chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 # Add ec2-user to docker group
 usermod -aG docker ec2-user
 
-# Install AWS CLI (for ECR login, SSM parameter reads)
+# ── Install AWS CLI (for ECR login, SSM parameter reads) ─────────────────────
 dnf install -y aws-cli
 
-# SSM agent is pre-installed on AL2023; just ensure it is enabled and running
-systemctl enable amazon-ssm-agent
-systemctl start amazon-ssm-agent || true   # already running on fresh AL2023
-
-# Create app directory
+# ── Create app directory ──────────────────────────────────────────────────────
 mkdir -p /opt/autodream
 chmod 755 /opt/autodream
 
@@ -35,12 +50,21 @@ cat > /opt/autodream/.env << 'ENVEOF'
 ENVEOF
 chmod 600 /opt/autodream/.env
 
-# Pull env from SSM and write to .env file.
-# AWS credentials come from the EC2 IAM instance profile — no static keys needed.
+# ── Pull env from SSM and write to .env file ─────────────────────────────────
+# AWS credentials come from the EC2 IAM instance profile — no static keys.
+# Uses IMDSv2 (http_tokens=required) to fetch region from instance metadata.
 cat > /opt/autodream/update-env.sh << 'SCRIPTEOF'
 #!/bin/bash
 set -euo pipefail
-REGION=$(curl -sf http://169.254.169.254/latest/meta-data/placement/region)
+
+# IMDSv2: fetch a short-lived token, then use it to get the region.
+IMDS_TOKEN=$(curl -sf --retry 3 --connect-timeout 5 \
+  -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+REGION=$(curl -sf --retry 3 --connect-timeout 5 \
+  -H "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" \
+  "http://169.254.169.254/latest/meta-data/placement/region")
+
 ECR_REGISTRY=$(aws ssm get-parameter --name /autodream/ecr_registry --region "$REGION" --query Parameter.Value --output text)
 DATABASE_URL=$(aws ssm get-parameter --name /autodream/database_url --region "$REGION" --with-decryption --query Parameter.Value --output text)
 REDIS_URL=$(aws ssm get-parameter --name /autodream/redis_url --region "$REGION" --with-decryption --query Parameter.Value --output text)
@@ -69,7 +93,7 @@ chmod 600 /opt/autodream/.env
 SCRIPTEOF
 chmod +x /opt/autodream/update-env.sh
 
-# Create systemd service for autodream (handles restarts on instance reboot)
+# ── systemd service for autodream ─────────────────────────────────────────────
 cat > /etc/systemd/system/autodream.service << 'SERVICEEOF'
 [Unit]
 Description=AutoDreamApplier Services
@@ -95,4 +119,8 @@ systemctl daemon-reload
 # Note: autodream.service is NOT enabled on first boot — the deploy pipeline
 # writes the compose file and starts containers. Enable after first deploy.
 
-echo "EC2 setup complete."
+# ── Final SSM agent status check ─────────────────────────────────────────────
+systemctl is-active amazon-ssm-agent \
+  && echo "EC2 setup complete. SSM agent is active." \
+  || { echo "WARN: SSM agent not active at end of setup — attempting restart."; \
+       systemctl restart amazon-ssm-agent || true; }
