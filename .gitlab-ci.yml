@@ -54,6 +54,7 @@ include:
   - local: .gitlab/ci/update.yml
   - local: .gitlab/ci/deploy.yml
   - local: .gitlab/ci/destroy.yml
+  - local: .gitlab/ci/ami.yml
 
 # ── Workflow: which events start a pipeline ────────────────────────────────
 
@@ -63,8 +64,8 @@ workflow:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     # Push to main → Update pipeline (auto)
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-    # Web or API-triggered → Deploy or Destroy (requires PIPELINE_TYPE variable)
-    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && ($PIPELINE_TYPE == "deploy" || $PIPELINE_TYPE == "destroy")'
+    # Web or API-triggered → Deploy, Destroy, or Build-AMI
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && ($PIPELINE_TYPE == "deploy" || $PIPELINE_TYPE == "destroy" || $PIPELINE_TYPE == "build-ami")'
 
 # ── Stages (all pipelines share this list; each job picks its stage) ──────
 

@@ -23,7 +23,7 @@ resource "aws_secretsmanager_secret_version" "ec2_ssh_key" {
 
 # ── Data sources ───────────────────────────────────────────────────────────
 
-# Latest Amazon Linux 2023 ARM64 AMI
+# Latest Amazon Linux 2023 ARM64 AMI — used as fallback when no Packer AMI exists
 data "aws_ami" "amazon_linux_2023_arm64" {
   most_recent = true
   owners      = ["amazon"]
@@ -42,6 +42,13 @@ data "aws_ami" "amazon_linux_2023_arm64" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+}
+
+locals {
+  # Use the pre-baked Packer AMI if provided (var.ec2_ami_id set by CI from SSM),
+  # otherwise fall back to the latest AL2023 ARM64. The Packer AMI has Docker
+  # pre-installed, cutting boot-to-SSM-ready from ~10 min to < 60 s.
+  ec2_ami_id = var.ec2_ami_id != "" ? var.ec2_ami_id : data.aws_ami.amazon_linux_2023_arm64.id
 }
 
 # Default VPC (Lambda runs without VPC; EC2 uses default VPC public subnet)
@@ -94,7 +101,7 @@ resource "aws_security_group" "browser_pool_ec2" {
 # ── EC2 Instance ───────────────────────────────────────────────────────────
 
 resource "aws_instance" "browser_pool" {
-  ami                    = data.aws_ami.amazon_linux_2023_arm64.id
+  ami                    = local.ec2_ami_id
   instance_type          = "t4g.nano"
   key_name               = aws_key_pair.ec2.key_name
   vpc_security_group_ids = [aws_security_group.browser_pool_ec2.id]

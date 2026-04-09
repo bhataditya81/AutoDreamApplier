@@ -1,0 +1,122 @@
+name: Build EC2 Base AMI
+
+# Builds a pre-baked AL2023 ARM64 AMI with Docker, docker-compose, and
+# aws-cli pre-installed. Stores the AMI ID in SSM /autodream/ec2_ami_id
+# so the next terraform apply uses it for new instances (< 60 s boot).
+#
+# When to run:
+#   • Manually (workflow_dispatch) after changing packer/autodream.pkr.hcl
+#   • Automatically when the Packer template changes on main
+#   • Monthly via schedule to pull in base OS security patches
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [main]
+    paths:
+      - 'deployments/ec2/packer/**'
+
+  schedule:
+    # First Monday of every month at 02:00 UTC
+    - cron: '0 2 1-7 * 1'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-ami:
+    name: Build Packer AMI
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: '1.11.0'
+
+      - name: Packer init
+        working-directory: deployments/ec2/packer
+        run: packer init .
+
+      - name: Build AMI
+        id: build
+        working-directory: deployments/ec2/packer
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          PACKER_LOG: 1
+          PACKER_NO_COLOR: 1
+        run: |
+          packer build \
+            -var "aws_region=${AWS_REGION}" \
+            autodream.pkr.hcl | tee /tmp/packer-output.txt
+
+          AMI_ID=$(grep -oP 'ami-[a-f0-9]+' /tmp/packer-output.txt | tail -1)
+          if [ -z "${AMI_ID}" ]; then
+            echo "ERROR: Could not extract AMI ID from Packer output."
+            exit 1
+          fi
+
+          echo "ami_id=${AMI_ID}" >> "$GITHUB_OUTPUT"
+          echo "Built AMI: ${AMI_ID}"
+
+      - name: Store AMI ID in SSM
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          aws ssm put-parameter \
+            --name /autodream/ec2_ami_id \
+            --value "${{ steps.build.outputs.ami_id }}" \
+            --type String \
+            --overwrite \
+            --region "${AWS_REGION}"
+          echo "Stored ${{ steps.build.outputs.ami_id }} in SSM /autodream/ec2_ami_id"
+
+      - name: Tag AMI with commit info
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          aws ec2 create-tags \
+            --resources "${{ steps.build.outputs.ami_id }}" \
+            --tags \
+              "Key=GitCommit,Value=${GITHUB_SHA}" \
+              "Key=GitBranch,Value=${GITHUB_REF_NAME}" \
+              "Key=WorkflowRunId,Value=${GITHUB_RUN_ID}" \
+            --region "${AWS_REGION}"
+
+      - name: Clean up old AMIs (keep last 3)
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          OLD_AMIS=$(aws ec2 describe-images \
+            --owners self \
+            --filters "Name=name,Values=autodream-browser-pool-*" \
+            --query 'sort_by(Images, &CreationDate)[:-3].ImageId' \
+            --output text \
+            --region "${AWS_REGION}" 2>/dev/null || echo "")
+          for AMI in ${OLD_AMIS}; do
+            echo "Deregistering old AMI: ${AMI}"
+            aws ec2 deregister-image --image-id "${AMI}" --region "${AWS_REGION}" || true
+          done
+
+      - name: Summary
+        run: |
+          echo "## AMI Build Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AMI ID | \`${{ steps.build.outputs.ami_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SSM Key | \`/autodream/ec2_ami_id\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Region | \`${{ secrets.AWS_REGION || 'us-east-1' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Next: run the **Deploy** workflow to provision a new EC2 instance with this AMI." >> "$GITHUB_STEP_SUMMARY"

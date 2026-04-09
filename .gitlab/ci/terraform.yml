@@ -87,6 +87,19 @@ terraform:apply:full:
     - "deploy:build:ai-service"
     - "deploy:build:ai-service-deps"
   script:
+    # If a Packer-built AMI exists, use it instead of bare AL2023.
+    # The AMI ID is stored in SSM by the build:ami pipeline.
+    - |
+      PACKER_AMI=$(aws ssm get-parameter \
+        --name /autodream/ec2_ami_id \
+        --query Parameter.Value --output text \
+        --region "${AWS_REGION}" 2>/dev/null || echo "")
+      if [ -n "${PACKER_AMI}" ] && [ "${PACKER_AMI}" != "None" ]; then
+        echo "Using Packer AMI: ${PACKER_AMI}"
+        export TF_VAR_ec2_ami_id="${PACKER_AMI}"
+      else
+        echo "No Packer AMI found — using latest AL2023 ARM64 (slower boot)."
+      fi
     - terraform apply -auto-approve
     - |
       EC2_IP=$(terraform output -raw ec2_public_ip)

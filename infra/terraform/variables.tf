@@ -137,6 +137,12 @@ variable "admin_ssh_cidr" {
   type        = string
 }
 
+variable "ec2_ami_id" {
+  description = "Pre-baked Packer AMI with Docker + aws-cli pre-installed. Empty = use latest AL2023 ARM64 (slower boot)."
+  type        = string
+  default     = ""
+}
+
 # --- S3 ---
 
 variable "s3_bucket_resumes" {

@@ -96,44 +96,52 @@ systemctl daemon-reload
 echo "[Phase 1 complete] SSM agent running; scripts and systemd unit written."
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — Background: Docker + tooling + security patches (~5–10 min)
-# CI pipeline can already use SSM while this runs in the background.
-# The deploy pipeline checks for Docker readiness before starting containers.
+# PHASE 2 — Docker + tooling
+#
+# Packer AMI path  : Docker already installed → instant, writes sentinel & exits.
+# Base AL2023 path : Install Docker in background; CI waits for sentinel file.
 # ══════════════════════════════════════════════════════════════════════════════
-(
-  set -euo pipefail
-  LOG=/var/log/autodream-setup-phase2.log
-  exec > >(tee -a "$LOG") 2>&1
-  echo "[$(date -u +%H:%M:%SZ)] Phase 2 starting..."
 
-  # Security patches only (fast — no full package upgrade)
-  dnf upgrade -y --security 2>/dev/null || true
-
-  # Docker
-  dnf install -y docker
-  systemctl enable docker
-  systemctl start docker
-
-  # Docker Compose plugin (aarch64 for t4g)
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
-      -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-  # Add ec2-user to docker group
-  usermod -aG docker ec2-user
-
-  # AWS CLI
-  dnf install -y aws-cli
-
-  # Nightly security update cron (avoids long boot times on future reboots)
-  echo "0 3 * * * root dnf upgrade -y --security >> /var/log/dnf-security-cron.log 2>&1" \
-    > /etc/cron.d/autodream-security-updates
-
-  # Signal completion so the CI deploy pipeline can proceed
+if command -v docker &>/dev/null && systemctl is-enabled docker &>/dev/null; then
+  # ── Fast path: Packer AMI has Docker pre-installed ───────────────────────
+  systemctl start docker 2>/dev/null || true
+  usermod -aG docker ec2-user 2>/dev/null || true
   touch /var/lib/autodream-setup-complete
-  echo "[$(date -u +%H:%M:%SZ)] Phase 2 complete. Docker and tooling ready."
-) &
+  echo "[setup.sh] Packer AMI detected. Docker ready. Setup complete in Phase 1."
+else
+  # ── Slow path: base AL2023 AMI — install Docker in background ────────────
+  (
+    set -euo pipefail
+    LOG=/var/log/autodream-setup-phase2.log
+    exec > >(tee -a "$LOG") 2>&1
+    echo "[$(date -u +%H:%M:%SZ)] Phase 2 starting (base AMI — installing Docker)..."
 
-disown
-echo "[setup.sh] Phase 2 running in background (PID $!). Boot script exiting."
+    # Security patches only
+    dnf upgrade -y --security 2>/dev/null || true
+
+    # Docker
+    dnf install -y docker
+    systemctl enable docker
+    systemctl start docker
+
+    # Docker Compose plugin (aarch64 for t4g)
+    mkdir -p /usr/local/lib/docker/cli-plugins
+    curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+    usermod -aG docker ec2-user
+
+    # AWS CLI
+    dnf install -y aws-cli
+
+    # Nightly security cron
+    echo "0 3 * * * root dnf upgrade -y --security >> /var/log/dnf-security-cron.log 2>&1" \
+      > /etc/cron.d/autodream-security-updates
+
+    touch /var/lib/autodream-setup-complete
+    echo "[$(date -u +%H:%M:%SZ)] Phase 2 complete. Docker and tooling ready."
+  ) &
+  disown
+  echo "[setup.sh] Phase 2 running in background. Boot script exiting."
+fi

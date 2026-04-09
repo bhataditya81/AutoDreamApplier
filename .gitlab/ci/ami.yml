@@ -1,0 +1,106 @@
+# ============================================================
+# AMI Build pipeline  (PIPELINE_TYPE=build-ami)
+#
+# Builds a pre-baked AL2023 ARM64 AMI with Docker, docker-compose,
+# and aws-cli pre-installed. Stores the resulting AMI ID in
+# SSM Parameter Store at /autodream/ec2_ami_id.
+#
+# The deploy pipeline reads this parameter and passes it to
+# Terraform as TF_VAR_ec2_ami_id, so new EC2 instances use the
+# fast AMI instead of bare AL2023 (cuts boot-to-SSM from ~10 min
+# to < 60 s).
+#
+# How to trigger:
+#   GitLab CI/CD → Run pipeline → PIPELINE_TYPE=build-ami
+#
+# When to run:
+#   • After modifying deployments/ec2/packer/autodream.pkr.hcl
+#   • Periodically (monthly) to pick up base OS security patches
+#   • Before a major deploy when you want a clean base image
+#
+# Prerequisites (GitLab CI/CD variables):
+#   AWS_ACCESS_KEY_ID       (masked, protected)
+#   AWS_SECRET_ACCESS_KEY   (masked, protected)
+#   AWS_ACCOUNT_ID
+#   AWS_REGION              (default: us-east-1)
+# ============================================================
+
+build:ami:
+  stage: build
+  image: hashicorp/packer:1.11
+  timeout: 45 minutes
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $PIPELINE_TYPE == "build-ami"'
+    - when: never
+  variables:
+    PACKER_LOG: "1"
+    PACKER_NO_COLOR: "1"
+  before_script:
+    - packer version
+    - aws --version 2>/dev/null || apk add --no-cache aws-cli
+    - |
+      if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "ERROR: AWS credentials not set." >&2
+        exit 1
+      fi
+  script:
+    - cd deployments/ec2/packer
+    - packer init .
+    - |
+      packer build \
+        -var "aws_region=${AWS_REGION:-us-east-1}" \
+        autodream.pkr.hcl | tee /tmp/packer-output.txt
+
+    # Extract the AMI ID from packer output
+    - |
+      AMI_ID=$(grep -oP 'ami-[a-f0-9]+' /tmp/packer-output.txt | tail -1)
+      if [ -z "${AMI_ID}" ]; then
+        echo "ERROR: Could not extract AMI ID from Packer output." >&2
+        cat /tmp/packer-output.txt
+        exit 1
+      fi
+      echo "Built AMI: ${AMI_ID}"
+
+      # Store in SSM so terraform:apply:full picks it up automatically
+      aws ssm put-parameter \
+        --name /autodream/ec2_ami_id \
+        --value "${AMI_ID}" \
+        --type String \
+        --overwrite \
+        --region "${AWS_REGION:-us-east-1}"
+
+      echo "AMI_ID=${AMI_ID}" > ami.env
+      echo "Stored AMI ID in SSM /autodream/ec2_ami_id"
+
+    # Tag the AMI with the commit SHA for traceability
+    - |
+      aws ec2 create-tags \
+        --resources "${AMI_ID}" \
+        --tags "Key=GitCommit,Value=${CI_COMMIT_SHA}" \
+               "Key=GitBranch,Value=${CI_COMMIT_BRANCH}" \
+               "Key=PipelineId,Value=${CI_PIPELINE_ID}" \
+        --region "${AWS_REGION:-us-east-1}" 2>/dev/null || true
+
+    - echo "AMI build complete. ID stored in SSM. Run PIPELINE_TYPE=deploy to use it."
+
+  artifacts:
+    reports:
+      dotenv: deployments/ec2/packer/ami.env
+    expire_in: 30 days
+
+  # Clean up old AMIs (keep last 3) to avoid AMI storage costs
+  after_script:
+    - |
+      apk add --no-cache aws-cli 2>/dev/null || true
+      # List all autodream Packer AMIs sorted by creation date, deregister oldest beyond 3
+      OLD_AMIS=$(aws ec2 describe-images \
+        --owners self \
+        --filters "Name=name,Values=autodream-browser-pool-*" \
+        --query 'sort_by(Images, &CreationDate)[:-3].ImageId' \
+        --output text \
+        --region "${AWS_REGION:-us-east-1}" 2>/dev/null || echo "")
+      for AMI in ${OLD_AMIS}; do
+        echo "Deregistering old AMI: ${AMI}"
+        aws ec2 deregister-image --image-id "${AMI}" \
+          --region "${AWS_REGION:-us-east-1}" 2>/dev/null || true
+      done
