@@ -14,7 +14,12 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── SSM agent ────────────────────────────────────────────────────────────────
-# AL2023 starts amazon-ssm-agent by default; guarantee it here.
+# Standard AL2023 AMI has amazon-ssm-agent pre-installed.
+# Safety net: install it if missing (e.g. if the minimal AMI was used by mistake).
+if ! systemctl list-unit-files amazon-ssm-agent.service &>/dev/null; then
+  echo "SSM agent not found — installing..."
+  dnf install -y amazon-ssm-agent
+fi
 systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent 2>/dev/null || true
 

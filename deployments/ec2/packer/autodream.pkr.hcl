@@ -28,12 +28,14 @@ variable "instance_type" {
   default = "t4g.small" # Use small for the build (nano is too slow for dnf update)
 }
 
-# Use the latest official AL2023 ARM64 AMI as the base
+# Use the latest official AL2023 STANDARD ARM64 AMI as the base.
+# "al2023-ami-2023*" matches standard only — excludes "al2023-ami-minimal-*"
+# which lacks amazon-ssm-agent and would cause SSM registration failures.
 data "amazon-ami" "al2023_arm64" {
   region = var.aws_region
   owners = ["amazon"]
   filters = {
-    name                = "al2023-ami-2023.*-kernel-*-arm64"
+    name                = "al2023-ami-2023*-kernel-*-arm64"
     root-device-type    = "ebs"
     virtualization-type = "hvm"
   }

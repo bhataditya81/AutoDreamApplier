@@ -23,14 +23,17 @@ resource "aws_secretsmanager_secret_version" "ec2_ssh_key" {
 
 # ── Data sources ───────────────────────────────────────────────────────────
 
-# Latest Amazon Linux 2023 ARM64 AMI — used as fallback when no Packer AMI exists
+# Latest Amazon Linux 2023 STANDARD ARM64 AMI (NOT minimal).
+# The minimal AMI ("al2023-ami-minimal-*") does NOT include amazon-ssm-agent,
+# which causes SSM to never register. The standard AMI name begins with
+# "al2023-ami-2023" (version number directly after the prefix).
 data "aws_ami" "amazon_linux_2023_arm64" {
   most_recent = true
   owners      = ["amazon"]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-arm64"]
+    values = ["al2023-ami-2023*-kernel-*-arm64"]
   }
 
   filter {
@@ -102,7 +105,9 @@ resource "aws_security_group" "browser_pool_ec2" {
 
 resource "aws_instance" "browser_pool" {
   ami                    = local.ec2_ami_id
-  instance_type          = "t4g.nano"
+  # t4g.micro = 1GB RAM. t4g.nano (512MB) causes OOM kernel panics during
+  # cloud-init when dnf runs in the background (kswapd0 page allocation failure).
+  instance_type          = "t4g.micro"
   key_name               = aws_key_pair.ec2.key_name
   vpc_security_group_ids = [aws_security_group.browser_pool_ec2.id]
   subnet_id              = tolist(data.aws_subnets.default_public.ids)[0]
