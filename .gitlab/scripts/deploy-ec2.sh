@@ -60,8 +60,12 @@ fi
 aws s3 cp "s3://${S3_DEPLOY_PREFIX}/docker-compose.yml" \
   /opt/autodream/docker-compose.yml --region "${AWS_REGION}"
 
+# Populate .env from SSM before any docker operations
+bash /opt/autodream/update-env.sh
+source /opt/autodream/.env
+
 # ECR login (uses EC2 IAM instance profile — no static credentials needed)
-aws ecr get-login-password --region "${AWS_REGION}" | \
+aws ecr get-login-password --region "\${AWS_REGION}" | \
   docker login --username AWS --password-stdin "\${ECR_REGISTRY}"
 
 # Pull all service images
