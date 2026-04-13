@@ -45,13 +45,13 @@ IMAGE_TAG="${IMAGE_TAG}"
 
 # Wait for Phase 2 setup to finish (Docker + tooling installed in background).
 # setup.sh writes /var/lib/autodream-setup-complete when done.
-for i in \$(seq 1 40); do
+for i in \$(seq 1 60); do
   [ -f /var/lib/autodream-setup-complete ] && docker --version 2>/dev/null && break
-  echo "  Waiting for EC2 setup Phase 2 (\${i}/40 — up to 10 min)..."
+  echo "  Waiting for EC2 setup Phase 2 (\${i}/60 — up to 15 min)..."
   sleep 15
 done
 if ! docker --version 2>/dev/null; then
-  echo "ERROR: Docker not available after 10 min. Phase 2 log:"
+  echo "ERROR: Docker not available after 15 min. Phase 2 log:"
   cat /var/log/autodream-setup-phase2.log 2>/dev/null || echo "(no log yet)"
   exit 1
 fi
@@ -113,20 +113,20 @@ COMMAND_ID=$(aws ssm send-command \
   --instance-ids "${INSTANCE_ID}" \
   --document-name "AWS-RunShellScript" \
   --parameters "commands=[\"aws s3 cp s3://${S3_DEPLOY_PREFIX}/deploy-remote.sh /tmp/ec2-remote-deploy.sh --region ${AWS_REGION} && bash /tmp/ec2-remote-deploy.sh\"]" \
-  --timeout-seconds 600 \
+  --timeout-seconds 1800 \
   --region "${AWS_REGION}" \
   --query 'Command.CommandId' --output text)
 
 echo "SSM Command ID: ${COMMAND_ID}"
 
 # ── Poll until complete ───────────────────────────────────────────────────────
-for i in $(seq 1 60); do
-  sleep 10
+for i in $(seq 1 120); do
+  sleep 15
   CMD_STATUS=$(aws ssm get-command-invocation \
     --command-id "${COMMAND_ID}" \
     --instance-id "${INSTANCE_ID}" \
     --query 'Status' --output text --region "${AWS_REGION}" 2>/dev/null || echo "Pending")
-  echo "  [${i}/60] Status: ${CMD_STATUS}"
+  echo "  [${i}/120] Status: ${CMD_STATUS}"
 
   if [ "${CMD_STATUS}" = "Success" ]; then
     echo "=== Remote output ==="
@@ -151,5 +151,5 @@ for i in $(seq 1 60); do
   fi
 done
 
-echo "ERROR: Timed out waiting for deploy command after 10 minutes."
+echo "ERROR: Timed out waiting for deploy command after 30 minutes."
 exit 1

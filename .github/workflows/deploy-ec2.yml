@@ -76,7 +76,7 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: build-ec2-images
-    timeout-minutes: 10
+    timeout-minutes: 35
     environment: production
 
     steps:
