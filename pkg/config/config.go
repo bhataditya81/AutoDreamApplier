@@ -67,6 +67,7 @@ type AWSConfig struct {
 	Region          string
 	AccessKeyID     string
 	SecretAccessKey string
+	SessionToken    string
 }
 
 type CognitoConfig struct {
@@ -147,6 +148,7 @@ func Load() *Config {
 			Region:          getEnv("AWS_REGION", "us-east-1"),
 			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
 			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			SessionToken:    getEnv("AWS_SESSION_TOKEN", ""),
 		},
 		Cognito: CognitoConfig{
 			UserPoolID:  getEnv("COGNITO_USER_POOL_ID", ""),

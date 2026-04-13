@@ -247,6 +247,10 @@ func (h *Handler) ListMatchesMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if matches == nil {
+		matches = []repository.MatchWithJob{}
+	}
+
 	totalPages := int(total) / limit
 	if int(total)%limit > 0 {
 		totalPages++

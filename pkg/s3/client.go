@@ -33,9 +33,11 @@ func New(ctx context.Context, s3cfg pkgconfig.S3Config, awscfg pkgconfig.AWSConf
 		awsconfig.WithRegion(awscfg.Region),
 	}
 
-	// Use static credentials only when both key ID and secret are provided
-	// (IAM roles are used in production; static creds are for local/CI).
-	if awscfg.AccessKeyID != "" && awscfg.SecretAccessKey != "" {
+	// Use static credentials only for local dev (no session token = not an IAM role).
+	// In Lambda/EC2 the runtime injects AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY +
+	// AWS_SESSION_TOKEN as STS temp creds; using StaticCredentialsProvider without
+	// the session token causes 403 InvalidAccessKeyId.
+	if awscfg.AccessKeyID != "" && awscfg.SecretAccessKey != "" && awscfg.SessionToken == "" {
 		opts = append(opts, awsconfig.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider(
 				awscfg.AccessKeyID,

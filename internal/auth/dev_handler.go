@@ -125,7 +125,7 @@ func (h *DevAuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
-		response.BadRequest(w, "email already registered")
+		response.Conflict(w, "email already registered")
 		return
 	}
 

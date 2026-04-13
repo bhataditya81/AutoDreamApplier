@@ -195,18 +195,20 @@ test.describe('API — User profile endpoints', () => {
     try {
       const newName = `E2E Test User ${Date.now()}`;
       const res = await ctx.put('/api/v1/users/me', {
-        data: { fullName: newName },
+        data: { full_name: newName },
       });
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.fullName ?? body.full_name).toBe(newName);
+      const bodyData = body?.data ?? body;
+      expect(bodyData.fullName ?? bodyData.full_name).toBe(newName);
 
       // Verify it persisted — re-fetch
       const verifyRes = await ctx.get('/api/v1/users/me');
       expect(verifyRes.status()).toBe(200);
       const verifyBody = await verifyRes.json();
-      expect(verifyBody.fullName ?? verifyBody.full_name).toBe(newName);
+      const verifyData = verifyBody?.data ?? verifyBody;
+      expect(verifyData.fullName ?? verifyData.full_name).toBe(newName);
     } finally {
       await ctx.dispose();
     }
@@ -947,7 +949,7 @@ test.describe('API — Applications endpoints', () => {
     const ctx = await authedCtx(token);
     try {
       const res = await ctx.patch(`/api/v1/applications/${NULL_UUID}/outcome`, {
-        data: { outcome: 'interview_scheduled', notes: 'test' },
+        data: { outcome: 'rejected', notes: 'test' },
       });
       expect([404, 403]).toContain(res.status());
     } finally {
@@ -1181,7 +1183,7 @@ test.describe('User journey — Full onboarding flow', () => {
       const updatedName = `E2E Journey User ${Date.now()}`;
       const patchRes = await ctx.put('/api/v1/users/me', {
         headers: { Authorization: `Bearer ${token}` },
-        data:    { fullName: updatedName },
+        data:    { full_name: updatedName },
       });
       expect(patchRes.status()).toBe(200);
 

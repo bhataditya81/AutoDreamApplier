@@ -150,8 +150,8 @@ func TestDevHandler_Register_DuplicateEmail(t *testing.T) {
 	rr := doPost(t, h.Register, map[string]string{
 		"email": "dup@example.com", "password": "pass", "fullName": "Dup",
 	})
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for duplicate email, got %d", rr.Code)
+	if rr.Code != http.StatusConflict {
+		t.Errorf("expected 409 for duplicate email, got %d", rr.Code)
 	}
 }
 
